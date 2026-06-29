@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "180817077259",
+    "project_id": "sintonia-app-9f526",
+    "storage_bucket": "sintonia-app-9f526.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:180817077259:android:1a3c00a4d5eb334f9ed30e",
+        "android_client_info": {
+          "package_name": "com.sintonia.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlRiCY3-AYPoRh4gATILDj_mDo_yYU3Os"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:180817077259:android:514f9494d69f37369ed30e",
+        "android_client_info": {
+          "package_name": "mx.utng.sintonia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlRiCY3-AYPoRh4gATILDj_mDo_yYU3Os"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
