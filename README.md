@@ -101,7 +101,7 @@ sintonia/
 
 1. **Clona el repositorio**
    ```bash
-   git clone https://github.com/TU_USUARIO/sintonia.git
+   git clone https://github.com/Lau1907/sintonia.git
    cd sintonia
    ```
 
