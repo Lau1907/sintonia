@@ -1,9 +1,5 @@
 # 🎵 Sintonía — Control Multimedia Inteligente para el Ecosistema Digital
 
-<p align="center">
-  <img src="evidencias/pantalla_principal.png" width="250" alt="Pantalla principal de Sintonía"/>
-</p>
-
 ---
 
 ## 👩‍💻 Información del Proyecto
@@ -145,7 +141,10 @@ sintonia/
 ### Smartwatch — Control de Reproducción
 <img src="evidencias/wear_os.png" width="220"/>
 
-### Android TV — Dashboard en Tiempo Real
+### Smartwatch — Pantalla de notificación
+<img src="evidencias/android_tv.png" width="500"/>
+
+### Smartwatch — Pantalla de volumen
 <img src="evidencias/android_tv.png" width="500"/>
 
 ---
