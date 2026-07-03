@@ -132,27 +132,26 @@ sintonia/
 
 ## 📸 Capturas de Pantalla
 
-### Smartphone — Pantalla Principal
-<img src="evidencias/pantalla_principal.png" width="280"/>
+### Smartphone — Pantalla Principal Jamendo
+<img width="317" height="705" alt="image" src="https://github.com/user-attachments/assets/de25453b-4bcc-4f6e-b80b-124a55d0284e" />
 
 ### Smartphone — Búsqueda en Jamendo
-<img src="evidencias/jamendo_busqueda.png" width="280"/>
+<img width="317" height="715" alt="image" src="https://github.com/user-attachments/assets/e8e98802-6869-4e3d-9a5e-8a3dcb91c6a8" />
 
 ### Smartwatch — Control de Reproducción
-<img src="evidencias/wear_os.png" width="220"/>
+<img width="710" height="701" alt="image" src="https://github.com/user-attachments/assets/2138a8b1-3eb7-4940-bc90-49006b28f6db" />
 
 ### Smartwatch — Pantalla de notificación
-<img src="evidencias/android_tv.png" width="500"/>
+<img width="576" height="581" alt="image" src="https://github.com/user-attachments/assets/fba909c4-385c-4906-b9e4-a79470666443" />
 
 ### Smartwatch — Pantalla de volumen
-<img src="evidencias/android_tv.png" width="500"/>
+<img width="533" height="497" alt="image" src="https://github.com/user-attachments/assets/6a15e339-26e7-4870-9b2b-1a9d5271e63a" />
 
 ---
 
 ## 🔗 APIs Utilizadas
 
 - **Jamendo API** — https://api.jamendo.com/v3.0/ · Música gratuita bajo licencia Creative Commons
-- **Radio Garden API** — http://radio.garden · Radio en vivo de todo el mundo
 - **Firebase Realtime Database** — Comunicación en tiempo real entre dispositivos
 
 ---
