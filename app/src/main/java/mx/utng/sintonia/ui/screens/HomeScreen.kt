@@ -1,5 +1,11 @@
 package mx.utng.sintonia.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
@@ -8,10 +14,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,15 +27,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.ui.theme.SintoniaCard
 import mx.utng.sintonia.ui.theme.SintoniaDark
 import mx.utng.sintonia.ui.theme.SintoniaGreen
 import mx.utng.sintonia.ui.theme.SintoniaSubtext
 import mx.utng.sintonia.viewmodel.PlayerViewModel
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.foundation.lazy.items
-import mx.utng.sintonia.data.model.Song
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +44,7 @@ fun HomeScreen(
     val playbackState by viewModel.playbackState.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val downloads by viewModel.downloads.collectAsState()
+    val currentSource by viewModel.currentSource.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
     Scaffold(
@@ -79,11 +79,49 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Selector de fuente
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SourceChip(
+                    label = "Jamendo",
+                    selected = currentSource == "jamendo",
+                    color = SintoniaGreen,
+                    onClick = {
+                        viewModel.setSource("jamendo")
+                        viewModel.loadPopularTracks()
+                    }
+                )
+                SourceChip(
+                    label = "Spotify",
+                    selected = currentSource == "spotify",
+                    color = SintoniaGreen,
+                    onClick = { viewModel.setSource("spotify") }
+                )
+                SourceChip(
+                    label = "Radio",
+                    selected = currentSource == "radio",
+                    color = Color(0xFFFF6B9D),
+                    onClick = { viewModel.setSource("radio") }
+                )
+                SourceChip(
+                    label = "YouTube",
+                    selected = currentSource == "youtube",
+                    color = Color(0xFFFF0000),
+                    onClick = { viewModel.setSource("youtube") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Buscar música gratuita...", color = SintoniaSubtext) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = SintoniaGreen) },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = SintoniaGreen)
+                },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = SintoniaGreen,
@@ -103,7 +141,7 @@ fun HomeScreen(
                 }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text("Jamendo · Creative Commons", color = SintoniaSubtext, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -125,6 +163,24 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SourceChip(label: String, selected: Boolean, color: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) color.copy(alpha = 0.2f) else SintoniaCard,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (selected) color else Color.Transparent)
+    ) {
+        Text(
+            label,
+            color = if (selected) color else SintoniaSubtext,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -161,11 +217,11 @@ fun SongCard(
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
-            // Estado de descarga (GestorDescargas)
             when {
                 downloadStatus == null -> {
                     IconButton(onClick = onDownloadClick) {
-                        Icon(Icons.Default.Download, contentDescription = "Descargar", tint = SintoniaSubtext)
+                        Icon(Icons.Default.Download, contentDescription = "Descargar",
+                            tint = SintoniaSubtext)
                     }
                 }
                 !downloadStatus.descargada -> {
@@ -179,7 +235,8 @@ fun SongCard(
                     }
                 }
                 else -> {
-                    Icon(Icons.Default.CheckCircle, contentDescription = "Descargada", tint = SintoniaGreen)
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Descargada",
+                        tint = SintoniaGreen)
                 }
             }
 

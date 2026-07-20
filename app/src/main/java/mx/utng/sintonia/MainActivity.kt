@@ -9,7 +9,7 @@ import androidx.activity.viewModels
 import com.spotify.sdk.android.auth.AuthorizationClient
 import com.spotify.sdk.android.auth.AuthorizationResponse
 import mx.utng.sintonia.data.remote.SpotifyAuthManager
-import mx.utng.sintonia.ui.screens.HomeScreen
+import mx.utng.sintonia.ui.navigation.AppNavigation
 import mx.utng.sintonia.ui.theme.SintoniaTheme
 import mx.utng.sintonia.viewmodel.PlayerViewModel
 
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SintoniaTheme {
-                HomeScreen(viewModel = viewModel)
+                AppNavigation(viewModel = viewModel)
             }
         }
     }

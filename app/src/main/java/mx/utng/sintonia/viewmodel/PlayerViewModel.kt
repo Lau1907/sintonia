@@ -157,6 +157,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         firebaseRepo.updatePlaybackState(newState)
     }
 
+    fun playRadioStation(id: String, name: String, city: String, streamUrl: String) {
+        try {
+            val mediaItem = MediaItem.fromUri(streamUrl)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.play()
+        } catch (e: Exception) {
+            android.util.Log.e("RADIO", "Error al reproducir: ${e.message}")
+        }
+
+        val radioSong = Song(
+            id = id,
+            title = name,
+            artist = city,
+            albumCover = "",
+            audioUrl = streamUrl,
+            source = "radio"
+        )
+
+        val newState = PlaybackState(
+            isPlaying = true,
+            currentSong = radioSong,
+            source = "radio"
+        )
+        _playbackState.value = newState
+        firebaseRepo.updatePlaybackState(newState)
+    }
+
     fun togglePlayPause() {
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
@@ -215,6 +243,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun eliminarDescarga(songId: String) {
         firebaseRepo.removeDownload(songId)
+    }
+
+    fun setSource(source: String) {
+        _currentSource.value = source
     }
 
     fun getPorcentajeUso(): Float = (_storageUsedMb.value / storageTotalMb) * 100f
