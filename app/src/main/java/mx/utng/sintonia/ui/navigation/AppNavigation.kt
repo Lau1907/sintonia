@@ -91,7 +91,12 @@ fun AppNavigation(viewModel: PlayerViewModel) {
             composable(Screen.Downloads.route) { DownloadsScreen(viewModel = viewModel) }
             composable(Screen.Settings.route) { SettingsScreen() }
             composable("spotify") { SpotifyScreen(viewModel = viewModel) }
-            composable("radio") { RadioScreen(viewModel = viewModel) }
+            composable("radio") {
+                RadioScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
             composable("youtube") { YouTubeScreen() }
         }
     }

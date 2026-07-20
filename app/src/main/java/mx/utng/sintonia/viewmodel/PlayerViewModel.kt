@@ -1,6 +1,7 @@
 package mx.utng.sintonia.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -19,14 +20,20 @@ import mx.utng.sintonia.data.firebase.FirebaseRepository
 import mx.utng.sintonia.data.model.PlaybackState
 import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.data.remote.JamendoRepository
+import mx.utng.sintonia.data.remote.RadioRepository
 import mx.utng.sintonia.data.remote.SpotifyRepository
+import mx.utng.sintonia.ui.screens.RadioStation
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val jamendoRepo = JamendoRepository()
     private val spotifyRepo = SpotifyRepository()
     private val firebaseRepo = FirebaseRepository()
+    private val radioRepo = RadioRepository()
     private val exoPlayer = ExoPlayer.Builder(application).build()
+
+    // Manejo de preferencias para guardar el token de Spotify localmente
+    private val prefs = application.getSharedPreferences("sintonia_spotify_prefs", Context.MODE_PRIVATE)
 
     private val _songs = MutableStateFlow<List<Song>>(emptyList())
     val songs: StateFlow<List<Song>> = _songs
@@ -37,14 +44,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    // --- Descargas (equivalente a GestorDescargas del modelo) ---
     private val _downloads = MutableStateFlow<List<Song>>(emptyList())
     val downloads: StateFlow<List<Song>> = _downloads
 
     private val _storageUsedMb = MutableStateFlow(0f)
     val storageUsedMb: StateFlow<Float> = _storageUsedMb
 
-    val storageTotalMb = 1024f // 1 GB fijo para la demo
+    val storageTotalMb = 1024f
 
     private val _spotifyToken = MutableStateFlow<String?>(null)
     val spotifyToken: StateFlow<String?> = _spotifyToken
@@ -52,10 +58,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentSource = MutableStateFlow("jamendo")
     val currentSource: StateFlow<String> = _currentSource
 
+    private val _radioStations = MutableStateFlow<List<RadioStation>>(emptyList())
+    val radioStations: StateFlow<List<RadioStation>> = _radioStations
+
+    private val _progress = MutableStateFlow(0f)
+    val progress: StateFlow<Float> = _progress
+
     init {
+        // Cargar token guardado de Spotify si existe
+        val savedToken = prefs.getString("spotify_access_token", null)
+        if (!savedToken.isNullOrEmpty()) {
+            _spotifyToken.value = savedToken
+        }
+
         loadPopularTracks()
         listenForWearCommands()
         listenForDownloads()
+        trackProgress()
+    }
+
+    private fun trackProgress() {
+        viewModelScope.launch {
+            while (true) {
+                if (exoPlayer.isPlaying && exoPlayer.duration > 0) {
+                    _progress.value = exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
+                }
+                delay(500)
+            }
+        }
     }
 
     private fun listenForDownloads() {
@@ -111,9 +141,42 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun loadTopRadioStations() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                _radioStations.value = radioRepo.getTopStations()
+            } catch (e: Exception) {
+                android.util.Log.e("RADIO", "Error cargando estaciones: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun searchRadioStations(query: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                _radioStations.value = radioRepo.searchStations(query)
+            } catch (e: Exception) {
+                android.util.Log.e("RADIO", "Error búsqueda: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun setSpotifyToken(token: String) {
         _spotifyToken.value = token
         _currentSource.value = "spotify"
+        // Guardar token en preferencias para persistencia entre ejecuciones
+        prefs.edit().putString("spotify_access_token", token).apply()
+    }
+
+    fun logoutSpotify() {
+        _spotifyToken.value = null
+        prefs.edit().remove("spotify_access_token").apply()
     }
 
     fun searchSpotifyTracks(query: String) {
@@ -125,11 +188,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun playSongSpotify(song: Song, context: android.content.Context) {
+    fun playSongSpotify(song: Song, context: Context) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = Uri.parse(song.audioUrl)
-            putExtra(Intent.EXTRA_REFERRER,
-                Uri.parse("android-app://${context.packageName}"))
+            putExtra(
+                Intent.EXTRA_REFERRER,
+                Uri.parse("android-app://${context.packageName}")
+            )
         }
         context.startActivity(intent)
 
@@ -143,10 +208,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playSong(song: Song) {
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         val mediaItem = MediaItem.fromUri(song.audioUrl)
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        exoPlayer.play()
+        exoPlayer.playWhenReady = true
+        _progress.value = 0f
 
         val newState = PlaybackState(
             isPlaying = true,
@@ -158,14 +226,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playRadioStation(id: String, name: String, city: String, streamUrl: String) {
-        try {
-            val mediaItem = MediaItem.fromUri(streamUrl)
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            exoPlayer.play()
-        } catch (e: Exception) {
-            android.util.Log.e("RADIO", "Error al reproducir: ${e.message}")
-        }
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+        _progress.value = 0f
 
         val radioSong = Song(
             id = id,
@@ -175,7 +241,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             audioUrl = streamUrl,
             source = "radio"
         )
-
         val newState = PlaybackState(
             isPlaying = true,
             currentSong = radioSong,
@@ -199,29 +264,28 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun nextSong() {
         val currentList = _songs.value
+        val currentSongId = _playbackState.value.currentSong?.id ?: return
         if (currentList.isEmpty()) return
-        val currentIndex = currentList.indexOfFirst {
-            it.id == _playbackState.value.currentSong.id
+
+        val currentIndex = currentList.indexOfFirst { it.id == currentSongId }
+        if (currentIndex != -1) {
+            val nextIndex = (currentIndex + 1) % currentList.size
+            playSong(currentList[nextIndex])
         }
-        val nextIndex = (currentIndex + 1) % currentList.size
-        playSong(currentList[nextIndex])
     }
 
     fun previousSong() {
         val currentList = _songs.value
+        val currentSongId = _playbackState.value.currentSong?.id ?: return
         if (currentList.isEmpty()) return
-        val currentIndex = currentList.indexOfFirst {
-            it.id == _playbackState.value.currentSong.id
+
+        val currentIndex = currentList.indexOfFirst { it.id == currentSongId }
+        if (currentIndex != -1) {
+            val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
+            playSong(currentList[prevIndex])
         }
-        val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
-        playSong(currentList[prevIndex])
     }
 
-    /**
-     * Simula el progreso de descarga y lo va guardando en Firebase
-     * paso a paso. La pantalla de Descargas se actualiza sola gracias
-     * al listener de listenForDownloads().
-     */
     fun downloadSong(song: Song) {
         if (_downloads.value.any { it.id == song.id }) return
 

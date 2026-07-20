@@ -6,11 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,10 +43,14 @@ fun JamendoScreen(
         containerColor = SintoniaDark,
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Atrás",
+                        tint = Color.White, modifier = Modifier.padding(start = 8.dp))
+                },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Jamendo", fontWeight = FontWeight.Bold,
-                            color = SintoniaGreen, fontSize = 20.sp)
+                            color = Color.White, fontSize = 20.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             color = SintoniaGreen.copy(alpha = 0.2f),
@@ -83,7 +83,6 @@ fun JamendoScreen(
                 .padding(horizontal = 16.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -109,14 +108,10 @@ fun JamendoScreen(
                     }
                 }
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            Spacer(modifier = Modifier.height(12.dp))
             Text("RESULTADOS", color = SintoniaSubtext,
                 fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
             Spacer(modifier = Modifier.height(8.dp))
-
             if (isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = SintoniaGreen)
@@ -144,8 +139,7 @@ fun JamendoScreen(
                             ) {
                                 Text(
                                     "ⓘ Descarga legal bajo licencia Creative Commons",
-                                    color = SintoniaGreen,
-                                    fontSize = 11.sp,
+                                    color = SintoniaGreen, fontSize = 11.sp,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
@@ -173,50 +167,63 @@ fun JamendoSongCard(
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = song.albumCover,
-                contentDescription = null,
-                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = Color.White, fontWeight = FontWeight.Medium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(song.artist, color = SintoniaSubtext, fontSize = 13.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            when {
-                downloadStatus == null -> {
-                    IconButton(onClick = onDownloadClick) {
-                        Icon(Icons.Default.Download, contentDescription = "Descargar",
-                            tint = SintoniaSubtext)
+        Column {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = song.albumCover,
+                    contentDescription = null,
+                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(song.title, color = Color.White, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (isPlaying) "En reproducción · ${song.duration / 60}:${String.format("%02d", song.duration % 60)}"
+                        else "${song.artist} · ${song.duration / 60}:${String.format("%02d", song.duration % 60)}",
+                        color = if (isPlaying) SintoniaGreen else SintoniaSubtext,
+                        fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                when {
+                    downloadStatus == null -> {
+                        IconButton(onClick = onDownloadClick) {
+                            Icon(Icons.Default.Download, contentDescription = "Descargar",
+                                tint = SintoniaSubtext)
+                        }
+                    }
+                    !downloadStatus.descargada -> {
+                        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { downloadStatus.progresoDescarga / 100f },
+                                color = SintoniaGreen, strokeWidth = 2.dp,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    else -> {
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Descargada",
+                            tint = SintoniaGreen)
                     }
                 }
-                !downloadStatus.descargada -> {
-                    Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            progress = { downloadStatus.progresoDescarga / 100f },
-                            color = SintoniaGreen,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                else -> {
-                    Icon(Icons.Default.CheckCircle, contentDescription = "Descargada",
-                        tint = SintoniaGreen)
+                Spacer(modifier = Modifier.width(4.dp))
+                if (isPlaying) {
+                    Icon(Icons.Default.Pause, contentDescription = null, tint = SintoniaGreen)
+                } else {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = SintoniaSubtext)
                 }
             }
-            Spacer(modifier = Modifier.width(4.dp))
             if (isPlaying) {
-                Icon(Icons.Default.Pause, contentDescription = null, tint = SintoniaGreen)
-            } else {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = SintoniaSubtext)
+                LinearProgressIndicator(
+                    progress = { 0.45f },
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = SintoniaGreen,
+                    trackColor = SintoniaDark
+                )
             }
         }
     }

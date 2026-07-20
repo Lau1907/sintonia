@@ -1,9 +1,5 @@
 package mx.utng.sintonia.data.remote
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import com.spotify.sdk.android.auth.AuthorizationClient
 import com.spotify.sdk.android.auth.AuthorizationRequest
 import com.spotify.sdk.android.auth.AuthorizationResponse
 
@@ -18,7 +14,15 @@ object SpotifyAuthManager {
             AuthorizationResponse.Type.TOKEN,
             REDIRECT_URI
         )
-            .setScopes(arrayOf("streaming", "user-read-playback-state", "user-modify-playback-state"))
+            .setScopes(
+                arrayOf(
+                    "streaming",
+                    "user-read-playback-state",
+                    "user-modify-playback-state",
+                    "user-read-currently-playing"
+                )
+            )
+            .setShowDialog(true)
             .build()
     }
 }

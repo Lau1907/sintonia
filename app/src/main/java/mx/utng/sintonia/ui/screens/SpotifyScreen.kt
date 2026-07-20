@@ -1,6 +1,8 @@
 package mx.utng.sintonia.ui.screens
 
 import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.spotify.sdk.android.auth.AuthorizationClient
+import com.spotify.sdk.android.auth.AuthorizationResponse
 import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.data.remote.SpotifyAuthManager
 import mx.utng.sintonia.ui.theme.SintoniaCard
@@ -35,12 +38,31 @@ import mx.utng.sintonia.viewmodel.PlayerViewModel
 @Composable
 fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val activity = context as Activity
     val songs by viewModel.songs.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val spotifyToken by viewModel.spotifyToken.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+
+    // 🚀 LAUNCHER PARA CAPTURAR LA RESPUESTA DE SPOTIFY EN COMPOSE
+    val spotifyAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val response = AuthorizationClient.getResponse(result.resultCode, result.data)
+        when (response.type) {
+            AuthorizationResponse.Type.TOKEN -> {
+                val token = response.accessToken
+                // ⚠️ Asegúrate de tener este método en tu PlayerViewModel para guardar el token
+                viewModel.setSpotifyToken(token)
+            }
+            AuthorizationResponse.Type.ERROR -> {
+                android.util.Log.e("SpotifyAuth", "Error al autenticar: ${response.error}")
+            }
+            else -> {
+                android.util.Log.d("SpotifyAuth", "Cancelado por el usuario")
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -71,11 +93,12 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                         Button(
                             onClick = {
                                 val request = SpotifyAuthManager.getAuthRequest()
-                                AuthorizationClient.openLoginActivity(
-                                    activity,
-                                    SpotifyAuthManager.REQUEST_CODE,
+                                val intent = AuthorizationClient.createLoginActivityIntent(
+                                    context as Activity,
                                     request
                                 )
+                                // Lanzamos la actividad con el launcher de Compose
+                                spotifyAuthLauncher.launch(intent)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = SintoniaGreen)
                         ) {
@@ -121,7 +144,7 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                         items(songs) { song ->
                             SpotifySongCard(
                                 song = song,
-                                isPlaying = playbackState.currentSong.id == song.id && playbackState.isPlaying,
+                                isPlaying = playbackState.currentSong?.id == song.id && playbackState.isPlaying,
                                 onClick = { viewModel.playSongSpotify(song, context) }
                             )
                         }
