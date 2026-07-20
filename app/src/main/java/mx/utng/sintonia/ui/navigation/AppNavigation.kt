@@ -16,7 +16,10 @@ import mx.utng.sintonia.ui.screens.DownloadsScreen
 import mx.utng.sintonia.ui.screens.HomeScreen
 import mx.utng.sintonia.ui.screens.JamendoScreen
 import mx.utng.sintonia.ui.screens.QueueScreen
+import mx.utng.sintonia.ui.screens.RadioScreen
 import mx.utng.sintonia.ui.screens.SettingsScreen
+import mx.utng.sintonia.ui.screens.SpotifyScreen
+import mx.utng.sintonia.ui.screens.YouTubeScreen
 import mx.utng.sintonia.ui.theme.SintoniaDark
 import mx.utng.sintonia.ui.theme.SintoniaGreen
 import mx.utng.sintonia.ui.theme.SintoniaSubtext
@@ -80,11 +83,16 @@ fun AppNavigation(viewModel: PlayerViewModel) {
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(padding)
         ) {
-            composable(Screen.Home.route) { HomeScreen(viewModel = viewModel) }
+            composable(Screen.Home.route) {
+                HomeScreen(viewModel = viewModel, navController = navController)
+            }
             composable(Screen.Search.route) { JamendoScreen(viewModel = viewModel) }
             composable(Screen.Queue.route) { QueueScreen(viewModel = viewModel) }
             composable(Screen.Downloads.route) { DownloadsScreen(viewModel = viewModel) }
             composable(Screen.Settings.route) { SettingsScreen() }
+            composable("spotify") { SpotifyScreen(viewModel = viewModel) }
+            composable("radio") { RadioScreen(viewModel = viewModel) }
+            composable("youtube") { YouTubeScreen() }
         }
     }
 }

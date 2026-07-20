@@ -26,11 +26,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.ui.theme.SintoniaCard
 import mx.utng.sintonia.ui.theme.SintoniaDark
 import mx.utng.sintonia.ui.theme.SintoniaGreen
+import mx.utng.sintonia.ui.theme.SintoniaPink
 import mx.utng.sintonia.ui.theme.SintoniaSubtext
 import mx.utng.sintonia.viewmodel.PlayerViewModel
 
@@ -38,6 +40,7 @@ import mx.utng.sintonia.viewmodel.PlayerViewModel
 @Composable
 fun HomeScreen(
     viewModel: PlayerViewModel = viewModel(),
+    navController: NavController? = null,
     modifier: Modifier = Modifier
 ) {
     val songs by viewModel.songs.collectAsState()
@@ -97,19 +100,28 @@ fun HomeScreen(
                     label = "Spotify",
                     selected = currentSource == "spotify",
                     color = SintoniaGreen,
-                    onClick = { viewModel.setSource("spotify") }
+                    onClick = {
+                        viewModel.setSource("spotify")
+                        navController?.navigate("spotify")
+                    }
                 )
                 SourceChip(
                     label = "Radio",
                     selected = currentSource == "radio",
-                    color = Color(0xFFFF6B9D),
-                    onClick = { viewModel.setSource("radio") }
+                    color = SintoniaPink,
+                    onClick = {
+                        viewModel.setSource("radio")
+                        navController?.navigate("radio")
+                    }
                 )
                 SourceChip(
                     label = "YouTube",
                     selected = currentSource == "youtube",
                     color = Color(0xFFFF0000),
-                    onClick = { viewModel.setSource("youtube") }
+                    onClick = {
+                        viewModel.setSource("youtube")
+                        navController?.navigate("youtube")
+                    }
                 )
             }
 
@@ -216,7 +228,6 @@ fun SongCard(
                 Text(song.artist, color = SintoniaSubtext, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-
             when {
                 downloadStatus == null -> {
                     IconButton(onClick = onDownloadClick) {
@@ -239,9 +250,7 @@ fun SongCard(
                         tint = SintoniaGreen)
                 }
             }
-
             Spacer(modifier = Modifier.width(4.dp))
-
             if (isPlaying) {
                 Icon(Icons.Default.Pause, contentDescription = null, tint = SintoniaGreen)
             } else {
