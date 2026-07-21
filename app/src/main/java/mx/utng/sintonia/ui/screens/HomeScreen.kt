@@ -53,7 +53,7 @@ fun HomeScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "SINFONÍA", fontWeight = FontWeight.Bold,
+                            "SINTONÍA", fontWeight = FontWeight.Bold,
                             color = SintoniaGreen, fontSize = 20.sp
                         )
                         Spacer(modifier = Modifier.weight(1f))

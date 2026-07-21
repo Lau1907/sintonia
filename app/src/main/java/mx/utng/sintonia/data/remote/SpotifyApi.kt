@@ -1,6 +1,5 @@
 package mx.utng.sintonia.data.remote
 
-
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Query
@@ -25,9 +24,9 @@ data class SpotifyImage(val url: String = "")
 interface SpotifyApi {
     @GET("search")
     suspend fun searchTracks(
-        @Header("Authorization") token: String,
-        @Query("q") query: String,
-        @Query("type") type: String = "track",
-        @Query("limit") limit: Int = 20
+        @Header("Authorization") authHeader: String,
+        @Query(value = "q") query: String,
+        @Query(value = "type") type: String = "track",
+        @Query(value = "limit") limit: Int = 20
     ): SpotifySearchResponse
 }

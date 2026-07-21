@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -27,7 +28,7 @@ import mx.utng.sintonia.ui.screens.RadioStation
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val jamendoRepo = JamendoRepository()
-    private val spotifyRepo = SpotifyRepository()
+    private val spotifyRepository = SpotifyRepository()
     private val firebaseRepo = FirebaseRepository()
     private val radioRepo = RadioRepository()
     private val exoPlayer = ExoPlayer.Builder(application).build()
@@ -66,7 +67,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         // Cargar token guardado de Spotify si existe
-        val savedToken = prefs.getString("spotify_access_token", null)
+        val savedToken = prefs.getString("66f7b9f9a86343ca966251fde4b8bbca", null)
         if (!savedToken.isNullOrEmpty()) {
             _spotifyToken.value = savedToken
         }
@@ -171,20 +172,35 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _spotifyToken.value = token
         _currentSource.value = "spotify"
         // Guardar token en preferencias para persistencia entre ejecuciones
-        prefs.edit().putString("spotify_access_token", token).apply()
+        prefs.edit().putString("66f7b9f9a86343ca966251fde4b8bbca", token).apply()
     }
 
     fun logoutSpotify() {
         _spotifyToken.value = null
-        prefs.edit().remove("spotify_access_token").apply()
+        prefs.edit().remove("66f7b9f9a86343ca966251fde4b8bbca").apply()
     }
 
     fun searchSpotifyTracks(query: String) {
-        val token = _spotifyToken.value ?: return
+        val token = _spotifyToken.value
+        if (query.isBlank() || token.isNullOrEmpty()) {
+            Log.e("PlayerViewModel", "No se puede buscar: Query vacía o Token nulo")
+            return
+        }
+
         viewModelScope.launch {
             _isLoading.value = true
-            _songs.value = spotifyRepo.searchTracks(query, token)
-            _isLoading.value = false
+            try {
+                // Llamamos al repositorio
+                val result = spotifyRepository.searchTracks(query, token)
+                _songs.value = result
+            } catch (e: Exception) {
+                // Si algo sale mal (HTTP 400, sin internet, etc.), atrapamos el error aquí
+                Log.e("PlayerViewModel", "Error buscando en Spotify desde ViewModel: ${e.message}")
+                _songs.value = emptyList() // Limpiamos la lista para no mostrar basura
+            } finally {
+                // Se ejecuta SIEMPRE, haya error o éxito, quitando el icono de carga
+                _isLoading.value = false
+            }
         }
     }
 

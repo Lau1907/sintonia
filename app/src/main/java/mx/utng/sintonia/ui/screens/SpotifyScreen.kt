@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,7 +48,7 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
     val spotifyToken by viewModel.spotifyToken.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
-    // 🚀 LAUNCHER PARA CAPTURAR LA RESPUESTA DE SPOTIFY EN COMPOSE
+    // Launcher para capturar el Token de autenticación de Spotify
     val spotifyAuthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -52,7 +56,6 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
         when (response.type) {
             AuthorizationResponse.Type.TOKEN -> {
                 val token = response.accessToken
-                // ⚠️ Asegúrate de tener este método en tu PlayerViewModel para guardar el token
                 viewModel.setSpotifyToken(token)
             }
             AuthorizationResponse.Type.ERROR -> {
@@ -72,6 +75,18 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                 title = {
                     Text("Spotify", fontWeight = FontWeight.Bold,
                         color = SintoniaGreen, fontSize = 20.sp)
+                },
+                actions = {
+                    // Botón discreto para cerrar sesión si hay token activo
+                    if (spotifyToken != null) {
+                        IconButton(onClick = { viewModel.logoutSpotify() }) {
+                            Icon(
+                                imageVector = Icons.Default.ExitToApp,
+                                contentDescription = "Cerrar sesión",
+                                tint = SintoniaSubtext
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SintoniaDark)
             )
@@ -97,7 +112,6 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                                     context as Activity,
                                     request
                                 )
-                                // Lanzamos la actividad con el launcher de Compose
                                 spotifyAuthLauncher.launch(intent)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = SintoniaGreen)
@@ -108,6 +122,8 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                 }
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Campo de texto optimizado para búsqueda
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -123,24 +139,45 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
                     ),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
+                    // 💡 Configuración para habilitar la tecla "Buscar" en el teclado
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            if (searchQuery.isNotBlank()) {
+                                viewModel.setSource("spotify")
+                                viewModel.searchSpotifyTracks(searchQuery)
+                            }
+                        }
+                    ),
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            TextButton(onClick = { viewModel.searchSpotifyTracks(searchQuery) }) {
+                            TextButton(onClick = {
+                                viewModel.setSource("spotify")
+                                viewModel.searchSpotifyTracks(searchQuery)
+                            }) {
                                 Text("Buscar", color = SintoniaGreen)
                             }
                         }
                     }
                 )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Spotify · Premium", color = SintoniaSubtext, fontSize = 12.sp)
+                Text("Spotify · Conectado", color = SintoniaSubtext, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (isLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = SintoniaGreen)
                     }
+                } else if (songs.isEmpty() && searchQuery.isNotBlank()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No se encontraron resultados", color = SintoniaSubtext)
+                    }
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
                         items(songs) { song ->
                             SpotifySongCard(
                                 song = song,
@@ -158,7 +195,9 @@ fun SpotifyScreen(viewModel: PlayerViewModel = viewModel(), modifier: Modifier =
 @Composable
 fun SpotifySongCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = if (isPlaying) SintoniaGreen.copy(alpha = 0.2f) else SintoniaCard
         ),
@@ -171,15 +210,27 @@ fun SpotifySongCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
             AsyncImage(
                 model = song.albumCover,
                 contentDescription = null,
-                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = Color.White, fontWeight = FontWeight.Medium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(song.artist, color = SintoniaSubtext, fontSize = 13.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = song.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = song.artist,
+                    color = SintoniaSubtext,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Text("♫", color = SintoniaGreen, fontSize = 18.sp)
         }
