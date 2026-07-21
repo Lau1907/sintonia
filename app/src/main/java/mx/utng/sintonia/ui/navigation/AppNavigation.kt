@@ -90,7 +90,7 @@ fun AppNavigation(viewModel: PlayerViewModel) {
             composable(Screen.Queue.route) { QueueScreen(viewModel = viewModel) }
             composable(Screen.Downloads.route) { DownloadsScreen(viewModel = viewModel) }
             composable(Screen.Settings.route) { SettingsScreen() }
-            composable("spotify") { SpotifyScreen(viewModel = viewModel) }
+            composable("spotify") { SpotifyScreen(viewModel = viewModel, navController = navController) }
             composable("radio") {
                 RadioScreen(
                     viewModel = viewModel,

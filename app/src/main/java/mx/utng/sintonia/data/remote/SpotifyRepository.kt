@@ -41,7 +41,7 @@ class SpotifyRepository {
                 authHeader = authHeader,
                 query = cleanQuery,
                 type = "track",
-                limit = 20
+                limit = 10
             )
 
             val items = response.tracks?.items ?: emptyList()
@@ -64,6 +64,33 @@ class SpotifyRepository {
             emptyList()
         } catch (e: Exception) {
             Log.e("SpotifyRepository", "Error general en la búsqueda: ${e.localizedMessage}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getFeaturedTracks(token: String): List<Song> {
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val response = api.searchTracks(
+                authHeader = authHeader,
+                query = "top hits 2024",
+                type = "track",
+                limit = 20
+            )
+            val items = response.tracks?.items ?: emptyList()
+            items.map { track ->
+                Song(
+                    id = track.id,
+                    title = track.name,
+                    artist = track.artists.firstOrNull()?.name ?: "Artista desconocido",
+                    albumCover = track.album.images.firstOrNull()?.url ?: "",
+                    audioUrl = "spotify:track:${track.id}",
+                    duration = track.duration_ms / 1000,
+                    source = "spotify"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("SpotifyRepository", "Error cargando featured: ${e.localizedMessage}")
             emptyList()
         }
     }

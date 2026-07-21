@@ -25,8 +25,8 @@ interface SpotifyApi {
     @GET("search")
     suspend fun searchTracks(
         @Header("Authorization") authHeader: String,
-        @Query(value = "q") query: String,
-        @Query(value = "type") type: String = "track",
-        @Query(value = "limit") limit: Int = 20
+        @Query("q") query: String,
+        @Query("type") type: String,
+        @Query("limit") limit: Int
     ): SpotifySearchResponse
 }

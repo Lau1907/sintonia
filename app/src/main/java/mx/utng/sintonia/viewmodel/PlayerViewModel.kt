@@ -22,6 +22,7 @@ import mx.utng.sintonia.data.model.PlaybackState
 import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.data.remote.JamendoRepository
 import mx.utng.sintonia.data.remote.RadioRepository
+import mx.utng.sintonia.data.remote.SpotifyPlayerManager
 import mx.utng.sintonia.data.remote.SpotifyRepository
 import mx.utng.sintonia.ui.screens.RadioStation
 
@@ -32,12 +33,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val firebaseRepo = FirebaseRepository()
     private val radioRepo = RadioRepository()
     private val exoPlayer = ExoPlayer.Builder(application).build()
+    private val spotifyPlayer = SpotifyPlayerManager(application)
 
-    // Manejo de preferencias para guardar el token de Spotify localmente
     private val prefs = application.getSharedPreferences("sintonia_spotify_prefs", Context.MODE_PRIVATE)
 
     private val _songs = MutableStateFlow<List<Song>>(emptyList())
     val songs: StateFlow<List<Song>> = _songs
+
+    private val _spotifySongs = MutableStateFlow<List<Song>>(emptyList())
+    val spotifySongs: StateFlow<List<Song>> = _spotifySongs
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState
@@ -65,17 +69,63 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _progress = MutableStateFlow(0f)
     val progress: StateFlow<Float> = _progress
 
+    private val _spotifyProgress = MutableStateFlow(0f)
+    val spotifyProgress: StateFlow<Float> = _spotifyProgress
+
+    private val _spotifyDuration = MutableStateFlow(0L)
+    val spotifyDuration: StateFlow<Long> = _spotifyDuration
+
+    private val _spotifyConnected = MutableStateFlow(false)
+    val spotifyConnected: StateFlow<Boolean> = _spotifyConnected
+
     init {
-        // Cargar token guardado de Spotify si existe
         val savedToken = prefs.getString("66f7b9f9a86343ca966251fde4b8bbca", null)
         if (!savedToken.isNullOrEmpty()) {
             _spotifyToken.value = savedToken
+            spotifyPlayer.connect()
         }
-
         loadPopularTracks()
         listenForWearCommands()
         listenForDownloads()
         trackProgress()
+        observeSpotifyState()
+    }
+
+    private fun observeSpotifyState() {
+        viewModelScope.launch {
+            spotifyPlayer.isConnected.collect { connected ->
+                _spotifyConnected.value = connected
+            }
+        }
+        viewModelScope.launch {
+            spotifyPlayer.progress.collect { _spotifyProgress.value = it }
+        }
+        viewModelScope.launch {
+            spotifyPlayer.duration.collect { _spotifyDuration.value = it }
+        }
+        viewModelScope.launch {
+            spotifyPlayer.isPaused.collect { paused ->
+                if (_playbackState.value.source == "spotify") {
+                    _playbackState.value = _playbackState.value.copy(isPlaying = !paused)
+                    firebaseRepo.updateIsPlaying(!paused)
+                }
+            }
+        }
+        // Escuchar cambio de canción automático
+        viewModelScope.launch {
+            spotifyPlayer.currentTrackName.collect { trackName ->
+                if (trackName.isNotEmpty() && _playbackState.value.source == "spotify") {
+                    val updatedSong = _playbackState.value.currentSong.copy(
+                        title = trackName,
+                        artist = spotifyPlayer.currentArtist.value,
+                        audioUrl = spotifyPlayer.currentTrackUri.value,
+                        albumCover = spotifyPlayer.currentAlbumCover.value
+                    )
+                    _playbackState.value = _playbackState.value.copy(currentSong = updatedSong)
+                    firebaseRepo.updateCurrentSong(updatedSong)
+                }
+            }
+        }
     }
 
     private fun trackProgress() {
@@ -102,26 +152,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun listenForWearCommands() {
-        android.util.Log.d("WEAR_CMD", "Registrando listener...")
         FirebaseDatabase.getInstance().reference
             .child("playback").child("skipSong")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val value = snapshot.getValue(String::class.java)
-                    android.util.Log.d("WEAR_CMD", "Valor recibido: $value")
                     when (value) {
-                        "next" -> {
-                            nextSong()
-                            snapshot.ref.setValue(null)
-                        }
-                        "previous" -> {
-                            previousSong()
-                            snapshot.ref.setValue(null)
-                        }
+                        "next" -> { nextSong(); snapshot.ref.setValue(null) }
+                        "previous" -> { previousSong(); snapshot.ref.setValue(null) }
                     }
                 }
                 override fun onCancelled(error: DatabaseError) {
-                    android.util.Log.e("WEAR_CMD", "Error: ${error.message}")
+                    Log.e("WEAR_CMD", "Error: ${error.message}")
                 }
             })
     }
@@ -148,7 +190,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 _radioStations.value = radioRepo.getTopStations()
             } catch (e: Exception) {
-                android.util.Log.e("RADIO", "Error cargando estaciones: ${e.message}")
+                Log.e("RADIO", "Error cargando estaciones: ${e.message}")
             } finally {
                 _isLoading.value = false
             }
@@ -161,7 +203,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 _radioStations.value = radioRepo.searchStations(query)
             } catch (e: Exception) {
-                android.util.Log.e("RADIO", "Error búsqueda: ${e.message}")
+                Log.e("RADIO", "Error búsqueda: ${e.message}")
             } finally {
                 _isLoading.value = false
             }
@@ -171,13 +213,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setSpotifyToken(token: String) {
         _spotifyToken.value = token
         _currentSource.value = "spotify"
-        // Guardar token en preferencias para persistencia entre ejecuciones
         prefs.edit().putString("66f7b9f9a86343ca966251fde4b8bbca", token).apply()
+        spotifyPlayer.connect()
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                _spotifySongs.value = spotifyRepository.getFeaturedTracks(token)
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error cargando featured: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
 
     fun logoutSpotify() {
         _spotifyToken.value = null
+        _spotifySongs.value = emptyList()
+        _currentSource.value = "jamendo"
         prefs.edit().remove("66f7b9f9a86343ca966251fde4b8bbca").apply()
+        spotifyPlayer.disconnect()
     }
 
     fun searchSpotifyTracks(query: String) {
@@ -186,42 +241,38 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             Log.e("PlayerViewModel", "No se puede buscar: Query vacía o Token nulo")
             return
         }
-
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Llamamos al repositorio
-                val result = spotifyRepository.searchTracks(query, token)
-                _songs.value = result
+                _spotifySongs.value = spotifyRepository.searchTracks(query, token)
             } catch (e: Exception) {
-                // Si algo sale mal (HTTP 400, sin internet, etc.), atrapamos el error aquí
-                Log.e("PlayerViewModel", "Error buscando en Spotify desde ViewModel: ${e.message}")
-                _songs.value = emptyList() // Limpiamos la lista para no mostrar basura
+                Log.e("PlayerViewModel", "Error buscando en Spotify: ${e.message}")
+                _spotifySongs.value = emptyList()
             } finally {
-                // Se ejecuta SIEMPRE, haya error o éxito, quitando el icono de carga
                 _isLoading.value = false
             }
         }
     }
 
     fun playSongSpotify(song: Song, context: Context) {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse(song.audioUrl)
-            putExtra(
-                Intent.EXTRA_REFERRER,
-                Uri.parse("android-app://${context.packageName}")
-            )
+        if (spotifyPlayer.isConnected.value) {
+            spotifyPlayer.playSong(song.audioUrl)
+            exoPlayer.stop()
+        } else {
+            spotifyPlayer.connect()
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse(song.audioUrl)
+                putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://${context.packageName}"))
+            }
+            context.startActivity(intent)
         }
-        context.startActivity(intent)
-
-        val newState = PlaybackState(
-            isPlaying = true,
-            currentSong = song,
-            source = "spotify"
-        )
+        val newState = PlaybackState(isPlaying = true, currentSong = song, source = "spotify")
         _playbackState.value = newState
         firebaseRepo.updatePlaybackState(newState)
     }
+
+    fun connectSpotifyPlayer() { spotifyPlayer.connect() }
+    fun disconnectSpotifyPlayer() { spotifyPlayer.disconnect() }
 
     fun playSong(song: Song) {
         exoPlayer.stop()
@@ -232,11 +283,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         exoPlayer.playWhenReady = true
         _progress.value = 0f
 
-        val newState = PlaybackState(
-            isPlaying = true,
-            currentSong = song,
-            source = "jamendo"
-        )
+        val newState = PlaybackState(isPlaying = true, currentSong = song, source = "jamendo")
         _playbackState.value = newState
         firebaseRepo.updatePlaybackState(newState)
     }
@@ -249,65 +296,68 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         exoPlayer.playWhenReady = true
         _progress.value = 0f
 
-        val radioSong = Song(
-            id = id,
-            title = name,
-            artist = city,
-            albumCover = "",
-            audioUrl = streamUrl,
-            source = "radio"
-        )
-        val newState = PlaybackState(
-            isPlaying = true,
-            currentSong = radioSong,
-            source = "radio"
-        )
+        val radioSong = Song(id = id, title = name, artist = city,
+            albumCover = "", audioUrl = streamUrl, source = "radio")
+        val newState = PlaybackState(isPlaying = true, currentSong = radioSong, source = "radio")
         _playbackState.value = newState
         firebaseRepo.updatePlaybackState(newState)
     }
 
     fun togglePlayPause() {
-        if (exoPlayer.isPlaying) {
-            exoPlayer.pause()
-            firebaseRepo.updateIsPlaying(false)
-            _playbackState.value = _playbackState.value.copy(isPlaying = false)
+        if (_playbackState.value.source == "spotify") {
+            if (_playbackState.value.isPlaying) {
+                spotifyPlayer.pause()
+            } else {
+                spotifyPlayer.resume()
+            }
+            _playbackState.value = _playbackState.value.copy(
+                isPlaying = !_playbackState.value.isPlaying
+            )
+            firebaseRepo.updateIsPlaying(_playbackState.value.isPlaying)
         } else {
-            exoPlayer.play()
-            firebaseRepo.updateIsPlaying(true)
-            _playbackState.value = _playbackState.value.copy(isPlaying = true)
+            if (exoPlayer.isPlaying) {
+                exoPlayer.pause()
+                firebaseRepo.updateIsPlaying(false)
+                _playbackState.value = _playbackState.value.copy(isPlaying = false)
+            } else {
+                exoPlayer.play()
+                firebaseRepo.updateIsPlaying(true)
+                _playbackState.value = _playbackState.value.copy(isPlaying = true)
+            }
         }
     }
 
     fun nextSong() {
-        val currentList = _songs.value
-        val currentSongId = _playbackState.value.currentSong?.id ?: return
-        if (currentList.isEmpty()) return
-
-        val currentIndex = currentList.indexOfFirst { it.id == currentSongId }
-        if (currentIndex != -1) {
-            val nextIndex = (currentIndex + 1) % currentList.size
-            playSong(currentList[nextIndex])
+        if (_playbackState.value.source == "spotify") {
+            spotifyPlayer.skipNext()
+        } else {
+            val currentList = _songs.value
+            if (currentList.isEmpty()) return
+            val currentIndex = currentList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
+            if (currentIndex != -1) {
+                playSong(currentList[(currentIndex + 1) % currentList.size])
+            }
         }
     }
 
     fun previousSong() {
-        val currentList = _songs.value
-        val currentSongId = _playbackState.value.currentSong?.id ?: return
-        if (currentList.isEmpty()) return
-
-        val currentIndex = currentList.indexOfFirst { it.id == currentSongId }
-        if (currentIndex != -1) {
-            val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
-            playSong(currentList[prevIndex])
+        if (_playbackState.value.source == "spotify") {
+            spotifyPlayer.skipPrevious()
+        } else {
+            val currentList = _songs.value
+            if (currentList.isEmpty()) return
+            val currentIndex = currentList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
+            if (currentIndex != -1) {
+                val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
+                playSong(currentList[prevIndex])
+            }
         }
     }
 
     fun downloadSong(song: Song) {
         if (_downloads.value.any { it.id == song.id }) return
-
         viewModelScope.launch {
             firebaseRepo.saveDownload(song.copy(progresoDescarga = 0, descargada = false))
-
             for (progreso in 10..100 step 10) {
                 delay(300)
                 firebaseRepo.saveDownload(
@@ -317,22 +367,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun cancelarDescarga(songId: String) {
-        firebaseRepo.removeDownload(songId)
-    }
-
-    fun eliminarDescarga(songId: String) {
-        firebaseRepo.removeDownload(songId)
-    }
-
-    fun setSource(source: String) {
-        _currentSource.value = source
-    }
-
+    fun cancelarDescarga(songId: String) { firebaseRepo.removeDownload(songId) }
+    fun eliminarDescarga(songId: String) { firebaseRepo.removeDownload(songId) }
+    fun setSource(source: String) { _currentSource.value = source }
     fun getPorcentajeUso(): Float = (_storageUsedMb.value / storageTotalMb) * 100f
 
     override fun onCleared() {
         super.onCleared()
         exoPlayer.release()
+        spotifyPlayer.disconnect()
     }
 }
