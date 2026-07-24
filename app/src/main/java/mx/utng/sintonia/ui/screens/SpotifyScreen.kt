@@ -51,7 +51,19 @@ fun SpotifyScreen(
     val spotifyToken by viewModel.spotifyToken.collectAsState()
     val spotifyProgress by viewModel.spotifyProgress.collectAsState()
     val spotifyDuration by viewModel.spotifyDuration.collectAsState()
+    val queue by viewModel.queue.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     val spotifyAuthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -67,6 +79,7 @@ fun SpotifyScreen(
     Scaffold(
         modifier = modifier,
         containerColor = SintoniaDark,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -131,7 +144,6 @@ fun SpotifyScreen(
                 .padding(horizontal = 16.dp)
         ) {
             if (spotifyToken == null) {
-                // ── Pantalla de login ─────────────────────────────────────────
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
@@ -174,7 +186,6 @@ fun SpotifyScreen(
                     }
                 }
             } else {
-                // ── Pantalla principal con token ──────────────────────────────
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = searchQuery,
@@ -244,7 +255,20 @@ fun SpotifyScreen(
                             SpotifySongCard(
                                 song = song,
                                 isPlaying = playbackState.currentSong.id == song.id && playbackState.isPlaying,
-                                onClick = { viewModel.playSongSpotify(song, context) }
+                                isInQueue = queue.any { it.id == song.id },
+                                isFavorite = favorites.any { it.id == song.id },
+                                onClick = { viewModel.playSongSpotify(song, context) },
+                                onAddToQueue = {
+                                    viewModel.addToQueue(song)
+                                    snackbarMessage = "\"${song.title}\" agregada a la cola"
+                                },
+                                onFavorite = {
+                                    viewModel.toggleFavorite(song)
+                                    snackbarMessage = if (favorites.any { it.id == song.id })
+                                        "\"${song.title}\" quitada de favoritos"
+                                    else
+                                        "\"${song.title}\" guardada en favoritos"
+                                }
                             )
                         }
                     }
@@ -303,9 +327,7 @@ fun SpotifyPlayerBar(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier
@@ -315,7 +337,6 @@ fun SpotifyPlayerBar(
                 color = SintoniaGreen,
                 trackColor = SintoniaDark
             )
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -329,9 +350,7 @@ fun SpotifyPlayerBar(
                     color = SintoniaSubtext, fontSize = 10.sp
                 )
             }
-
             Spacer(modifier = Modifier.height(4.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -375,7 +394,15 @@ fun formatTime(seconds: Int): String {
 }
 
 @Composable
-fun SpotifySongCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
+fun SpotifySongCard(
+    song: Song,
+    isPlaying: Boolean,
+    isInQueue: Boolean = false,
+    isFavorite: Boolean = false,
+    onClick: () -> Unit,
+    onAddToQueue: () -> Unit = {},
+    onFavorite: () -> Unit = {}
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -406,6 +433,22 @@ fun SpotifySongCard(song: Song, isPlaying: Boolean, onClick: () -> Unit) {
                 Text(
                     song.artist, color = SintoniaSubtext, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+            // Botón favorito
+            IconButton(onClick = onFavorite) {
+                Icon(
+                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Guardar en favoritos",
+                    tint = if (isFavorite) SintoniaGreen else SintoniaSubtext
+                )
+            }
+            // Botón agregar a cola
+            IconButton(onClick = onAddToQueue) {
+                Icon(
+                    if (isInQueue) Icons.Default.QueueMusic else Icons.Default.AddToQueue,
+                    contentDescription = if (isInQueue) "En cola" else "Agregar a cola",
+                    tint = if (isInQueue) SintoniaGreen else SintoniaSubtext
                 )
             }
             if (isPlaying) {

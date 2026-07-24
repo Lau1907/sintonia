@@ -86,18 +86,30 @@ fun AppNavigation(viewModel: PlayerViewModel) {
             composable(Screen.Home.route) {
                 HomeScreen(viewModel = viewModel, navController = navController)
             }
-            composable(Screen.Search.route) { JamendoScreen(viewModel = viewModel) }
-            composable(Screen.Queue.route) { QueueScreen(viewModel = viewModel) }
-            composable(Screen.Downloads.route) { DownloadsScreen(viewModel = viewModel) }
-            composable(Screen.Settings.route) { SettingsScreen() }
-            composable("spotify") { SpotifyScreen(viewModel = viewModel, navController = navController) }
-            composable("radio") {
-                RadioScreen(
-                    viewModel = viewModel,
-                    onBack = { navController.popBackStack() }
-                )
+            composable(Screen.Search.route) {
+                JamendoScreen(viewModel = viewModel)
             }
-            composable("youtube") { YouTubeScreen() }
+            composable(Screen.Queue.route) {
+                QueueScreen(viewModel = viewModel)
+            }
+            composable(Screen.Downloads.route) {
+                DownloadsScreen(viewModel = viewModel)
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen()
+            }
+            composable("spotify") {
+                SpotifyScreen(viewModel = viewModel, navController = navController)
+            }
+            composable("radio") {
+                RadioScreen(viewModel = viewModel)
+            }
+            composable("jamendo") {
+                JamendoScreen(viewModel = viewModel)
+            }
+            composable("youtube") {
+                YouTubeScreen(navController = navController, viewModel = viewModel)
+            }
         }
     }
 }

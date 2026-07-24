@@ -132,6 +132,7 @@ fun HomeScreen(
                             onClick = {
                                 viewModel.setSource("jamendo")
                                 viewModel.loadPopularTracks()
+                                navController?.navigate("jamendo")
                             }
                         )
                     }

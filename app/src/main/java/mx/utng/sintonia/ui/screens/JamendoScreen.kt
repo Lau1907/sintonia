@@ -36,28 +36,46 @@ fun JamendoScreen(
     val playbackState by viewModel.playbackState.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val downloads by viewModel.downloads.collectAsState()
+    val queue by viewModel.queue.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarMessage = null
+        }
+    }
 
     Scaffold(
         modifier = modifier,
         containerColor = SintoniaDark,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Atrás",
-                        tint = Color.White, modifier = Modifier.padding(start = 8.dp))
+                    Icon(
+                        Icons.Default.ArrowBack, contentDescription = "Atrás",
+                        tint = Color.White, modifier = Modifier.padding(start = 8.dp)
+                    )
                 },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Jamendo", fontWeight = FontWeight.Bold,
-                            color = Color.White, fontSize = 20.sp)
+                        Text(
+                            "Jamendo", fontWeight = FontWeight.Bold,
+                            color = Color.White, fontSize = 20.sp
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             color = SintoniaGreen.copy(alpha = 0.2f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Creative Commons", color = SintoniaGreen, fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            Text(
+                                "Creative Commons", color = SintoniaGreen, fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
                         }
                     }
                 },
@@ -109,8 +127,10 @@ fun JamendoScreen(
                 }
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text("RESULTADOS", color = SintoniaSubtext,
-                fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "RESULTADOS", color = SintoniaSubtext,
+                fontSize = 11.sp, fontWeight = FontWeight.Bold
+            )
             Spacer(modifier = Modifier.height(8.dp))
             if (isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -123,8 +143,13 @@ fun JamendoScreen(
                             song = song,
                             isPlaying = playbackState.currentSong.id == song.id && playbackState.isPlaying,
                             downloadStatus = downloads.find { it.id == song.id },
+                            isInQueue = queue.any { it.id == song.id },
                             onClick = { viewModel.playSong(song) },
-                            onDownloadClick = { viewModel.downloadSong(song) }
+                            onDownloadClick = { viewModel.downloadSong(song) },
+                            onAddToQueue = {
+                                viewModel.addToQueue(song)
+                                snackbarMessage = "\"${song.title}\" agregada a la cola"
+                            }
                         )
                     }
                     item {
@@ -157,8 +182,10 @@ fun JamendoSongCard(
     song: Song,
     isPlaying: Boolean,
     downloadStatus: Song?,
+    isInQueue: Boolean,
     onClick: () -> Unit,
-    onDownloadClick: () -> Unit
+    onDownloadClick: () -> Unit,
+    onAddToQueue: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
@@ -175,13 +202,15 @@ fun JamendoSongCard(
                 AsyncImage(
                     model = song.albumCover,
                     contentDescription = null,
-                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(song.title, color = Color.White, fontWeight = FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        song.title, color = Color.White, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                     Text(
                         if (isPlaying) "En reproducción · ${song.duration / 60}:${String.format("%02d", song.duration % 60)}"
                         else "${song.artist} · ${song.duration / 60}:${String.format("%02d", song.duration % 60)}",
@@ -189,34 +218,79 @@ fun JamendoSongCard(
                         fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
+                // Botón cola
+                IconButton(
+                    onClick = onAddToQueue,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        if (isInQueue) Icons.Default.QueueMusic else Icons.Default.AddToQueue,
+                        contentDescription = if (isInQueue) "En cola" else "Agregar a cola",
+                        tint = if (isInQueue) SintoniaGreen else SintoniaSubtext,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                // Play/Pause
+                if (isPlaying) {
+                    Icon(Icons.Default.Pause, contentDescription = null,
+                        tint = SintoniaGreen, modifier = Modifier.size(20.dp))
+                } else {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null,
+                        tint = SintoniaSubtext, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            // Segunda fila para descarga
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 when {
                     downloadStatus == null -> {
-                        IconButton(onClick = onDownloadClick) {
-                            Icon(Icons.Default.Download, contentDescription = "Descargar",
-                                tint = SintoniaSubtext)
+                        TextButton(
+                            onClick = onDownloadClick,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Download, contentDescription = null,
+                                tint = SintoniaSubtext, modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Descargar", color = SintoniaSubtext, fontSize = 11.sp)
                         }
                     }
                     !downloadStatus.descargada -> {
-                        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(
                                 progress = { downloadStatus.progresoDescarga / 100f },
                                 color = SintoniaGreen, strokeWidth = 2.dp,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "${downloadStatus.progresoDescarga}%",
+                                color = SintoniaSubtext, fontSize = 11.sp
                             )
                         }
                     }
                     else -> {
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Descargada",
-                            tint = SintoniaGreen)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CheckCircle, contentDescription = null,
+                                tint = SintoniaGreen, modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Descargada", color = SintoniaGreen, fontSize = 11.sp)
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.width(4.dp))
-                if (isPlaying) {
-                    Icon(Icons.Default.Pause, contentDescription = null, tint = SintoniaGreen)
-                } else {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = SintoniaSubtext)
-                }
             }
+
+            // Barra de progreso si está reproduciendo
             if (isPlaying) {
                 LinearProgressIndicator(
                     progress = { 0.45f },

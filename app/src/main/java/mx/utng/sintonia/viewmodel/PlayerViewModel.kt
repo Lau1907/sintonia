@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -25,6 +26,8 @@ import mx.utng.sintonia.data.remote.RadioRepository
 import mx.utng.sintonia.data.remote.SpotifyPlayerManager
 import mx.utng.sintonia.data.remote.SpotifyRepository
 import mx.utng.sintonia.ui.screens.RadioStation
+import mx.utng.sintonia.data.remote.YouTubeRepository
+import mx.utng.sintonia.ui.screens.YouTubeVideo
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -34,6 +37,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val radioRepo = RadioRepository()
     private val exoPlayer = ExoPlayer.Builder(application).build()
     private val spotifyPlayer = SpotifyPlayerManager(application)
+    private val appContext: Context = application.applicationContext
 
     private val prefs = application.getSharedPreferences("sintonia_spotify_prefs", Context.MODE_PRIVATE)
 
@@ -78,6 +82,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _spotifyConnected = MutableStateFlow(false)
     val spotifyConnected: StateFlow<Boolean> = _spotifyConnected
 
+    private val _queue = MutableStateFlow<List<Song>>(emptyList())
+    val queue: StateFlow<List<Song>> = _queue
+
+    private val _favorites = MutableStateFlow<List<Song>>(emptyList())
+    val favorites: StateFlow<List<Song>> = _favorites
+
+    // Con los otros repos
+    private val youtubeRepo = YouTubeRepository()
+    private val YOUTUBE_API_KEY = "AIzaSyAMi-MKr8r8eeaA_lMFaDeI1JoUmi5YulM"
+
+    private val _youtubeVideos = MutableStateFlow<List<YouTubeVideo>>(emptyList())
+    val youtubeVideos: StateFlow<List<YouTubeVideo>> = _youtubeVideos
+
+    fun searchYouTubeVideos(query: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                _youtubeVideos.value = youtubeRepo.searchVideos(query, YOUTUBE_API_KEY)
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error YouTube: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
     init {
         val savedToken = prefs.getString("66f7b9f9a86343ca966251fde4b8bbca", null)
         if (!savedToken.isNullOrEmpty()) {
@@ -89,6 +118,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         listenForDownloads()
         trackProgress()
         observeSpotifyState()
+        setupExoPlayerListener()
+    }
+
+    private fun setupExoPlayerListener() {
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    nextSong()
+                }
+            }
+        })
     }
 
     private fun observeSpotifyState() {
@@ -111,7 +151,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
-        // Escuchar cambio de canción automático
         viewModelScope.launch {
             spotifyPlayer.currentTrackName.collect { trackName ->
                 if (trackName.isNotEmpty() && _playbackState.value.source == "spotify") {
@@ -268,6 +307,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         val newState = PlaybackState(isPlaying = true, currentSong = song, source = "spotify")
         _playbackState.value = newState
+        _currentSource.value = "spotify"
         firebaseRepo.updatePlaybackState(newState)
     }
 
@@ -283,8 +323,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         exoPlayer.playWhenReady = true
         _progress.value = 0f
 
-        val newState = PlaybackState(isPlaying = true, currentSong = song, source = "jamendo")
+        val newState = PlaybackState(
+            isPlaying = true,
+            currentSong = song.copy(source = "jamendo"),
+            source = "jamendo"
+        )
         _playbackState.value = newState
+        _currentSource.value = "jamendo"
         firebaseRepo.updatePlaybackState(newState)
     }
 
@@ -296,13 +341,89 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         exoPlayer.playWhenReady = true
         _progress.value = 0f
 
-        val radioSong = Song(id = id, title = name, artist = city,
-            albumCover = "", audioUrl = streamUrl, source = "radio")
+        val radioSong = Song(
+            id = id, title = name, artist = city,
+            albumCover = "", audioUrl = streamUrl, source = "radio"
+        )
         val newState = PlaybackState(isPlaying = true, currentSong = radioSong, source = "radio")
         _playbackState.value = newState
+        _currentSource.value = "radio"
         firebaseRepo.updatePlaybackState(newState)
     }
 
+    // ── Cola de reproducción ──────────────────────────────────────────────────
+    fun addToQueue(song: Song) {
+        if (_queue.value.none { it.id == song.id }) {
+            _queue.value = _queue.value + song
+        }
+    }
+
+    fun removeFromQueue(songId: String) {
+        _queue.value = _queue.value.filter { it.id != songId }
+    }
+
+    fun clearQueue() {
+        _queue.value = emptyList()
+    }
+
+    fun playFromQueue(song: Song) {
+        when (song.source) {
+            "spotify" -> {
+                if (spotifyPlayer.isConnected.value) {
+                    spotifyPlayer.playSong(song.audioUrl)
+                    exoPlayer.stop()
+                } else {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        data = Uri.parse(song.audioUrl)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        putExtra(
+                            Intent.EXTRA_REFERRER,
+                            Uri.parse("android-app://${appContext.packageName}")
+                        )
+                    }
+                    appContext.startActivity(intent)
+                }
+                val newState = PlaybackState(
+                    isPlaying = true, currentSong = song, source = "spotify"
+                )
+                _playbackState.value = newState
+                _currentSource.value = "spotify"
+                firebaseRepo.updatePlaybackState(newState)
+            }
+            "radio" -> {
+                playRadioStation(song.id, song.title, song.artist, song.audioUrl)
+            }
+            else -> {
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+                exoPlayer.setMediaItem(MediaItem.fromUri(song.audioUrl))
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                _progress.value = 0f
+
+                val newState = PlaybackState(
+                    isPlaying = true,
+                    currentSong = song,
+                    source = song.source
+                )
+                _playbackState.value = newState
+                _currentSource.value = song.source
+                firebaseRepo.updatePlaybackState(newState)
+            }
+        }
+        removeFromQueue(song.id)
+    }
+
+    // ── Favoritos ─────────────────────────────────────────────────────────────
+    fun toggleFavorite(song: Song) {
+        if (_favorites.value.any { it.id == song.id }) {
+            _favorites.value = _favorites.value.filter { it.id != song.id }
+        } else {
+            _favorites.value = _favorites.value + song
+        }
+    }
+
+    // ── Controles generales ───────────────────────────────────────────────────
     fun togglePlayPause() {
         if (_playbackState.value.source == "spotify") {
             if (_playbackState.value.isPlaying) {
@@ -330,27 +451,35 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun nextSong() {
         if (_playbackState.value.source == "spotify") {
             spotifyPlayer.skipNext()
-        } else {
-            val currentList = _songs.value
-            if (currentList.isEmpty()) return
-            val currentIndex = currentList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
-            if (currentIndex != -1) {
-                playSong(currentList[(currentIndex + 1) % currentList.size])
-            }
+            return
+        }
+        if (_queue.value.isNotEmpty()) {
+            playFromQueue(_queue.value.first())
+            return
+        }
+        val currentList = _songs.value
+        if (currentList.isEmpty()) return
+        val currentIndex = currentList.indexOfFirst {
+            it.id == _playbackState.value.currentSong.id
+        }
+        if (currentIndex != -1) {
+            playSong(currentList[(currentIndex + 1) % currentList.size])
         }
     }
 
     fun previousSong() {
         if (_playbackState.value.source == "spotify") {
             spotifyPlayer.skipPrevious()
-        } else {
-            val currentList = _songs.value
-            if (currentList.isEmpty()) return
-            val currentIndex = currentList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
-            if (currentIndex != -1) {
-                val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
-                playSong(currentList[prevIndex])
-            }
+            return
+        }
+        val currentList = _songs.value
+        if (currentList.isEmpty()) return
+        val currentIndex = currentList.indexOfFirst {
+            it.id == _playbackState.value.currentSong.id
+        }
+        if (currentIndex != -1) {
+            val prevIndex = if (currentIndex <= 0) currentList.size - 1 else currentIndex - 1
+            playSong(currentList[prevIndex])
         }
     }
 
