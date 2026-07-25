@@ -49,13 +49,17 @@ class SpotifyPlayerManager(private val context: Context) {
                 Log.d("SpotifyPlayer", "Conectado a Spotify App Remote")
 
                 appRemote.playerApi.subscribeToPlayerState().setEventCallback { state ->
-                    _currentTrackName.value = state.track?.name ?: ""
-                    _currentArtist.value = state.track?.artist?.name ?: ""
-                    _currentTrackUri.value = state.track?.uri ?: ""
-                    _duration.value = state.track?.duration ?: 0L
+                    val trackName = state.track?.name ?: ""
+                    val artist = state.track?.artist?.name ?: ""
+                    val uri = state.track?.uri ?: ""
+                    val dur = state.track?.duration ?: 0L
+
+                    // Actualizar todos primero antes de emitir el nombre
+                    _currentArtist.value = artist
+                    _currentTrackUri.value = uri
+                    _duration.value = dur
                     _isPaused.value = state.isPaused
 
-                    val dur = state.track?.duration ?: 0L
                     if (dur > 0) {
                         _progress.value = state.playbackPosition.toFloat() / dur.toFloat()
                     }
@@ -66,6 +70,9 @@ class SpotifyPlayerManager(private val context: Context) {
                             _currentAlbumCover.value = imageUri.raw ?: ""
                         }
                     }
+
+                    // Emitir nombre al último para que los otros ya estén listos
+                    _currentTrackName.value = trackName
                 }
             }
 
@@ -74,6 +81,11 @@ class SpotifyPlayerManager(private val context: Context) {
                 Log.e("SpotifyPlayer", "Error conectando: ${throwable.message}")
             }
         })
+    }
+
+    fun addToQueue(spotifyUri: String) {
+        spotifyAppRemote?.playerApi?.queue(spotifyUri)
+            ?: Log.e("SpotifyPlayer", "No conectado a Spotify")
     }
 
     fun playSong(spotifyUri: String) {

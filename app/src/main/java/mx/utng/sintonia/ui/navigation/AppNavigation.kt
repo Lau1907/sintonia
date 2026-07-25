@@ -87,7 +87,7 @@ fun AppNavigation(viewModel: PlayerViewModel) {
                 HomeScreen(viewModel = viewModel, navController = navController)
             }
             composable(Screen.Search.route) {
-                JamendoScreen(viewModel = viewModel)
+                JamendoScreen(viewModel = viewModel, navController = navController)
             }
             composable(Screen.Queue.route) {
                 QueueScreen(viewModel = viewModel)
@@ -102,10 +102,10 @@ fun AppNavigation(viewModel: PlayerViewModel) {
                 SpotifyScreen(viewModel = viewModel, navController = navController)
             }
             composable("radio") {
-                RadioScreen(viewModel = viewModel)
+                RadioScreen(viewModel = viewModel, navController = navController)
             }
             composable("jamendo") {
-                JamendoScreen(viewModel = viewModel)
+                JamendoScreen(viewModel = viewModel, navController = navController)
             }
             composable("youtube") {
                 YouTubeScreen(navController = navController, viewModel = viewModel)

@@ -154,14 +154,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             spotifyPlayer.currentTrackName.collect { trackName ->
                 if (trackName.isNotEmpty() && _playbackState.value.source == "spotify") {
-                    val updatedSong = _playbackState.value.currentSong.copy(
-                        title = trackName,
-                        artist = spotifyPlayer.currentArtist.value,
-                        audioUrl = spotifyPlayer.currentTrackUri.value,
-                        albumCover = spotifyPlayer.currentAlbumCover.value
-                    )
-                    _playbackState.value = _playbackState.value.copy(currentSong = updatedSong)
-                    firebaseRepo.updateCurrentSong(updatedSong)
+                    // Esperar a que todos los valores estén actualizados
+                    val artist = spotifyPlayer.currentArtist.value
+                    val uri = spotifyPlayer.currentTrackUri.value
+                    val cover = spotifyPlayer.currentAlbumCover.value
+
+                    if (trackName != _playbackState.value.currentSong.title) {
+                        val updatedSong = _playbackState.value.currentSong.copy(
+                            title = trackName,
+                            artist = artist,
+                            audioUrl = uri,
+                            albumCover = cover
+                        )
+                        _playbackState.value = _playbackState.value.copy(currentSong = updatedSong)
+                        firebaseRepo.updateCurrentSong(updatedSong)
+                    }
                 }
             }
         }
@@ -294,9 +301,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playSongSpotify(song: Song, context: Context) {
+        stopAll() // ← detiene jamendo y radio antes de reproducir spotify
         if (spotifyPlayer.isConnected.value) {
             spotifyPlayer.playSong(song.audioUrl)
-            exoPlayer.stop()
+
+            // Agregar siguientes canciones a la cola de Spotify
+            val currentList = _spotifySongs.value
+            val currentIndex = currentList.indexOfFirst { it.id == song.id }
+            if (currentIndex != -1) {
+                val nextSongs = currentList.subList(
+                    (currentIndex + 1).coerceAtMost(currentList.size),
+                    currentList.size
+                )
+                nextSongs.forEach { nextSong ->
+                    spotifyPlayer.addToQueue(nextSong.audioUrl)
+                }
+            }
         } else {
             spotifyPlayer.connect()
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -314,9 +334,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun connectSpotifyPlayer() { spotifyPlayer.connect() }
     fun disconnectSpotifyPlayer() { spotifyPlayer.disconnect() }
 
-    fun playSong(song: Song) {
+    private fun stopAll() {
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+        if (spotifyPlayer.isConnected.value) {
+            spotifyPlayer.pause()
+        }
+    }
+
+    fun playSong(song: Song) {
+        stopAll() // ← detiene spotify y radio antes de reproducir jamendo
         val mediaItem = MediaItem.fromUri(song.audioUrl)
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
@@ -334,8 +361,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playRadioStation(id: String, name: String, city: String, streamUrl: String) {
-        exoPlayer.stop()
-        exoPlayer.clearMediaItems()
+        stopAll() // ← detiene spotify y jamendo antes de reproducir radio
         exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
@@ -351,7 +377,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         firebaseRepo.updatePlaybackState(newState)
     }
 
-    // ── Cola de reproducción ──────────────────────────────────────────────────
     fun addToQueue(song: Song) {
         if (_queue.value.none { it.id == song.id }) {
             _queue.value = _queue.value + song
@@ -366,12 +391,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _queue.value = emptyList()
     }
 
+
     fun playFromQueue(song: Song) {
         when (song.source) {
             "spotify" -> {
+                stopAll()
                 if (spotifyPlayer.isConnected.value) {
                     spotifyPlayer.playSong(song.audioUrl)
-                    exoPlayer.stop()
                 } else {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         data = Uri.parse(song.audioUrl)
@@ -394,8 +420,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 playRadioStation(song.id, song.title, song.artist, song.audioUrl)
             }
             else -> {
-                exoPlayer.stop()
-                exoPlayer.clearMediaItems()
+                stopAll()
                 exoPlayer.setMediaItem(MediaItem.fromUri(song.audioUrl))
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
@@ -414,7 +439,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         removeFromQueue(song.id)
     }
 
-    // ── Favoritos ─────────────────────────────────────────────────────────────
     fun toggleFavorite(song: Song) {
         if (_favorites.value.any { it.id == song.id }) {
             _favorites.value = _favorites.value.filter { it.id != song.id }
@@ -423,7 +447,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ── Controles generales ───────────────────────────────────────────────────
     fun togglePlayPause() {
         if (_playbackState.value.source == "spotify") {
             if (_playbackState.value.isPlaying) {
@@ -435,6 +458,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 isPlaying = !_playbackState.value.isPlaying
             )
             firebaseRepo.updateIsPlaying(_playbackState.value.isPlaying)
+        } else if (_playbackState.value.source == "radio") {
+            // Para radio: stop/play en lugar de pause
+            if (exoPlayer.isPlaying) {
+                exoPlayer.stop()
+                firebaseRepo.updateIsPlaying(false)
+                _playbackState.value = _playbackState.value.copy(isPlaying = false)
+            } else {
+                // Volver a cargar el stream
+                val streamUrl = _playbackState.value.currentSong.audioUrl
+                exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                firebaseRepo.updateIsPlaying(true)
+                _playbackState.value = _playbackState.value.copy(isPlaying = true)
+            }
         } else {
             if (exoPlayer.isPlaying) {
                 exoPlayer.pause()
@@ -496,6 +534,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun nextRadioStation() {
+        val stationList = _radioStations.value
+        if (stationList.isEmpty()) return
+        val currentIndex = stationList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
+        val nextIndex = (currentIndex + 1) % stationList.size
+        val next = stationList[nextIndex]
+        playRadioStation(next.id, next.name, next.city, next.streamUrl)
+    }
+
+    fun previousRadioStation() {
+        val stationList = _radioStations.value
+        if (stationList.isEmpty()) return
+        val currentIndex = stationList.indexOfFirst { it.id == _playbackState.value.currentSong.id }
+        val prevIndex = if (currentIndex <= 0) stationList.size - 1 else currentIndex - 1
+        val prev = stationList[prevIndex]
+        playRadioStation(prev.id, prev.name, prev.city, prev.streamUrl)
+    }
     fun cancelarDescarga(songId: String) { firebaseRepo.removeDownload(songId) }
     fun eliminarDescarga(songId: String) { firebaseRepo.removeDownload(songId) }
     fun setSource(source: String) { _currentSource.value = source }

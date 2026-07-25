@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import mx.utng.sintonia.ui.theme.SintoniaCard
 import mx.utng.sintonia.ui.theme.SintoniaDark
 import mx.utng.sintonia.ui.theme.SintoniaPink
@@ -33,11 +34,17 @@ data class RadioStation(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadioScreen(viewModel: PlayerViewModel, modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
+fun RadioScreen(
+    viewModel: PlayerViewModel,
+    modifier: Modifier = Modifier,
+    navController: NavController? = null,
+    onBack: () -> Unit = {}
+) {
     var searchQuery by remember { mutableStateOf("") }
     val playbackState by viewModel.playbackState.collectAsState()
     val stations by viewModel.radioStations.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val progress by viewModel.progress.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadTopRadioStations()
@@ -49,7 +56,7 @@ fun RadioScreen(viewModel: PlayerViewModel, modifier: Modifier = Modifier, onBac
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onBack) {   // ← aquí estaba el problema, era solo Icon sin onClick
+                    IconButton(onClick = { navController?.popBackStack() }) {
                         Icon(
                             Icons.Default.ArrowBack, contentDescription = "Atrás",
                             tint = Color.White
@@ -76,6 +83,18 @@ fun RadioScreen(viewModel: PlayerViewModel, modifier: Modifier = Modifier, onBac
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SintoniaDark)
             )
+        },
+        bottomBar = {
+            if (playbackState.currentSong.title.isNotEmpty() && playbackState.source == "radio") {
+                PlayerBar(
+                    song = playbackState.currentSong,
+                    isPlaying = playbackState.isPlaying,
+                    progress = progress,
+                    onTogglePlay = { viewModel.togglePlayPause() },
+                    onNext = { viewModel.nextRadioStation() },
+                    onPrevious = { viewModel.previousRadioStation() }
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -121,7 +140,9 @@ fun RadioScreen(viewModel: PlayerViewModel, modifier: Modifier = Modifier, onBac
 
             if (isLoading) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(color = SintoniaPink)
@@ -145,7 +166,8 @@ fun RadioScreen(viewModel: PlayerViewModel, modifier: Modifier = Modifier, onBac
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 "ONDA DE AUDIO — ${playbackState.currentSong.title.uppercase()}",
-                                color = SintoniaSubtext, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                color = SintoniaSubtext, fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             AudioWaveVisualizer()
@@ -200,7 +222,6 @@ fun AudioWaveVisualizer() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadioStationCard(station: RadioStation, isPlaying: Boolean, onClick: () -> Unit) {
     Card(

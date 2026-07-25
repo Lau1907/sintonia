@@ -77,17 +77,6 @@ fun HomeScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = SintoniaDark)
             )
-        },
-        bottomBar = {
-            if (playbackState.currentSong.title.isNotEmpty()) {
-                PlayerBar(
-                    song = playbackState.currentSong,
-                    isPlaying = playbackState.isPlaying,
-                    onTogglePlay = { viewModel.togglePlayPause() },
-                    onNext = { viewModel.nextSong() },
-                    onPrevious = { viewModel.previousSong() }
-                )
-            }
         }
     ) { padding ->
         LazyColumn(
@@ -186,24 +175,6 @@ fun HomeScreen(
                     )
                 }
             }
-
-            if (currentSource == "jamendo" && songs.isNotEmpty()) {
-                item {
-                    Text(
-                        "CANCIONES POPULARES", color = SintoniaSubtext,
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold
-                    )
-                }
-                items(songs.take(5)) { song ->
-                    SongCard(
-                        song = song,
-                        isPlaying = playbackState.currentSong.id == song.id && playbackState.isPlaying,
-                        downloadStatus = downloads.find { it.id == song.id },
-                        onClick = { viewModel.playSong(song) },
-                        onDownloadClick = { viewModel.downloadSong(song) }
-                    )
-                }
-            }
         }
     }
 }
@@ -220,7 +191,7 @@ fun SourceButton(
 ) {
     Card(
         modifier = modifier
-            .height(90.dp)
+            .height(120.dp)  // ← más alto
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = if (selected) color.copy(alpha = 0.25f) else SintoniaCard
@@ -231,20 +202,23 @@ fun SourceButton(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,  // ← centrado
+            horizontalAlignment = Alignment.CenterHorizontally  // ← centrado
         ) {
             Icon(
                 icon, contentDescription = null, tint = color,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(36.dp)  // ← ícono más grande
             )
-            Column {
-                Text(
-                    label, color = Color.White, fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
-                Text(sublabel, color = color, fontSize = 11.sp)
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                label, color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Text(
+                sublabel, color = color, fontSize = 12.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }
@@ -477,6 +451,7 @@ fun SongCard(
 fun PlayerBar(
     song: Song,
     isPlaying: Boolean,
+    progress: Float = 0f,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit
@@ -488,44 +463,114 @@ fun PlayerBar(
         colors = CardDefaults.cardColors(containerColor = SintoniaCard),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = song.albumCover,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(6.dp)),
-                contentScale = ContentScale.Crop
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    song.title, color = Color.White, fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    song.artist, color = SintoniaSubtext, fontSize = 11.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-            }
-            IconButton(onClick = onPrevious) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = SintoniaSubtext)
-            }
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+        Column {
+            Row(
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = song.albumCover,
                     contentDescription = null,
-                    tint = SintoniaGreen,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        song.title, color = Color.White, fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        song.artist, color = SintoniaSubtext, fontSize = 11.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = onPrevious) {
+                    Icon(
+                        Icons.Default.SkipPrevious, contentDescription = null,
+                        tint = SintoniaSubtext
+                    )
+                }
+                IconButton(onClick = onTogglePlay) {
+                    Icon(
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = SintoniaGreen,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                IconButton(onClick = onNext) {
+                    Icon(
+                        Icons.Default.SkipNext, contentDescription = null,
+                        tint = SintoniaSubtext
+                    )
+                }
+            }
+
+            // Barra de progreso — animada para radio, real para canciones
+            if (song.source == "radio") {
+                val infiniteTransition = rememberInfiniteTransition(label = "radioBar")
+                val radioProgress by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(3000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "radioProgress"
+                )
+                LinearProgressIndicator(
+                    progress = { radioProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = SintoniaPink,
+                    trackColor = SintoniaDark
+                )
+            } else {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = SintoniaGreen,
+                    trackColor = SintoniaDark
                 )
             }
-            IconButton(onClick = onNext) {
-                Icon(Icons.Default.SkipNext, contentDescription = null, tint = SintoniaSubtext)
+
+            // Tiempo
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (song.source == "radio") {
+                    Text(
+                        "● En vivo", color = SintoniaPink, fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("Radio", color = SintoniaSubtext, fontSize = 10.sp)
+                } else {
+                    Text(
+                        formatTime((progress * song.duration).toInt()),
+                        color = SintoniaSubtext, fontSize = 10.sp
+                    )
+                    Text(
+                        formatTime(song.duration),
+                        color = SintoniaSubtext, fontSize = 10.sp
+                    )
+                }
             }
         }
+    }
+
+    fun formatTime(seconds: Int): String {
+        val min = seconds / 60
+        val sec = seconds % 60
+        return "%d:%02d".format(min, sec)
     }
 }

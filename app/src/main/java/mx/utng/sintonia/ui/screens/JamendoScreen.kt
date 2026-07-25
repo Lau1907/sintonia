@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import mx.utng.sintonia.data.model.Song
 import mx.utng.sintonia.ui.theme.SintoniaCard
@@ -30,7 +31,8 @@ import mx.utng.sintonia.viewmodel.PlayerViewModel
 @Composable
 fun JamendoScreen(
     viewModel: PlayerViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    navController: NavController? = null
 ) {
     val songs by viewModel.songs.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
@@ -56,10 +58,12 @@ fun JamendoScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    Icon(
-                        Icons.Default.ArrowBack, contentDescription = "Atrás",
-                        tint = Color.White, modifier = Modifier.padding(start = 8.dp)
-                    )
+                    IconButton(onClick = { navController?.popBackStack() }) {
+                        Icon(
+                            Icons.Default.ArrowBack, contentDescription = "Atrás",
+                            tint = Color.White
+                        )
+                    }
                 },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -84,9 +88,11 @@ fun JamendoScreen(
         },
         bottomBar = {
             if (playbackState.currentSong.title.isNotEmpty()) {
+                val progress by viewModel.progress.collectAsState()
                 PlayerBar(
                     song = playbackState.currentSong,
                     isPlaying = playbackState.isPlaying,
+                    progress = progress,
                     onTogglePlay = { viewModel.togglePlayPause() },
                     onNext = { viewModel.nextSong() },
                     onPrevious = { viewModel.previousSong() }
