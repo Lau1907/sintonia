@@ -30,6 +30,16 @@ class FirebaseRepository {
         db.setValue(state)
     }
 
+    fun updateQueue(songs: List<Song>) {
+        val queueData = songs.take(3).mapIndexed { index, song ->
+            mapOf(
+                "title" to song.title,
+                "artist" to song.artist
+            )
+        }
+        FirebaseDatabase.getInstance().reference
+            .child("playback").child("queue").setValue(queueData)
+    }
     fun updateIsPlaying(isPlaying: Boolean) {
         db.child("isPlaying").setValue(isPlaying)
     }

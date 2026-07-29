@@ -119,6 +119,45 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         trackProgress()
         observeSpotifyState()
         setupExoPlayerListener()
+        listenForTvCommands()
+    }
+
+    private fun listenForTvCommands() {
+        FirebaseDatabase.getInstance().reference
+            .child("playback").child("tvCommand")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val command = snapshot.getValue(String::class.java) ?: return
+                    when (command) {
+                        "pause" -> {
+                            when (_playbackState.value.source) {
+                                "spotify" -> spotifyPlayer.pause()
+                                "radio" -> exoPlayer.stop()
+                                else -> exoPlayer.pause()
+                            }
+                            _playbackState.value = _playbackState.value.copy(isPlaying = false)
+                            firebaseRepo.updateIsPlaying(false)
+                            snapshot.ref.setValue(null)
+                        }
+                        "play" -> {
+                            when (_playbackState.value.source) {
+                                "spotify" -> spotifyPlayer.resume()
+                                "radio" -> {
+                                    val streamUrl = _playbackState.value.currentSong.audioUrl
+                                    exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+                                    exoPlayer.prepare()
+                                    exoPlayer.playWhenReady = true
+                                }
+                                else -> exoPlayer.play()
+                            }
+                            _playbackState.value = _playbackState.value.copy(isPlaying = true)
+                            firebaseRepo.updateIsPlaying(true)
+                            snapshot.ref.setValue(null)
+                        }
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
     }
 
     private fun setupExoPlayerListener() {
@@ -204,8 +243,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val value = snapshot.getValue(String::class.java)
                     when (value) {
-                        "next" -> { nextSong(); snapshot.ref.setValue(null) }
-                        "previous" -> { previousSong(); snapshot.ref.setValue(null) }
+                        "next" -> {
+                            when (_playbackState.value.source) {
+                                "radio" -> nextRadioStation()
+                                else -> nextSong()
+                            }
+                            snapshot.ref.setValue(null)
+                        }
+                        "previous" -> {
+                            when (_playbackState.value.source) {
+                                "radio" -> previousRadioStation()
+                                else -> previousSong()
+                            }
+                            snapshot.ref.setValue(null)
+                        }
                     }
                 }
                 override fun onCancelled(error: DatabaseError) {
@@ -214,6 +265,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             })
     }
 
+    fun playYouTubeVideo(video: YouTubeVideo) {
+        val song = Song(
+            id = video.id,
+            title = video.title,
+            artist = video.channel,
+            albumCover = video.thumbnail,
+            audioUrl = video.youtubeUrl,
+            source = "youtube"
+        )
+        val newState = PlaybackState(
+            isPlaying = true,
+            currentSong = song,
+            source = "youtube"
+        )
+        _playbackState.value = newState
+        _currentSource.value = "youtube"
+        firebaseRepo.updatePlaybackState(newState)
+    }
     fun loadPopularTracks() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -380,15 +449,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun addToQueue(song: Song) {
         if (_queue.value.none { it.id == song.id }) {
             _queue.value = _queue.value + song
+            firebaseRepo.updateQueue(_queue.value)
         }
     }
 
     fun removeFromQueue(songId: String) {
         _queue.value = _queue.value.filter { it.id != songId }
+        firebaseRepo.updateQueue(_queue.value)
     }
 
     fun clearQueue() {
         _queue.value = emptyList()
+        firebaseRepo.updateQueue(emptyList())
     }
 
 

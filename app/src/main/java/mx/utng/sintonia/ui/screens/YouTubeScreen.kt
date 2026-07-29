@@ -182,6 +182,9 @@ fun YouTubeScreen(
                         YouTubeVideoCard(
                             video = video,
                             onClick = {
+                                // ← Actualiza Firebase para que la TV muestre el video
+                                viewModel.playYouTubeVideo(video)
+
                                 try {
                                     val customTabIntent = CustomTabsIntent.Builder()
                                         .setShowTitle(true)
