@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        TvPlayer.initialize(this)
         setContent {
             MaterialTheme {
                 Box(
@@ -24,5 +25,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        TvPlayer.release()
     }
 }

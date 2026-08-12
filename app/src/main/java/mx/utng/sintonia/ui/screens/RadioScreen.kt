@@ -86,13 +86,16 @@ fun RadioScreen(
         },
         bottomBar = {
             if (playbackState.currentSong.title.isNotEmpty() && playbackState.source == "radio") {
+                val playOnTv by viewModel.playOnTv.collectAsState()
                 PlayerBar(
                     song = playbackState.currentSong,
                     isPlaying = playbackState.isPlaying,
                     progress = progress,
+                    playOnTv = playOnTv,
                     onTogglePlay = { viewModel.togglePlayPause() },
-                    onNext = { viewModel.nextRadioStation() },
-                    onPrevious = { viewModel.previousRadioStation() }
+                    onNext = { viewModel.nextSong() },
+                    onPrevious = { viewModel.previousSong() },
+                    onToggleTv = { viewModel.togglePlayOnTv() }
                 )
             }
         }

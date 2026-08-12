@@ -23,6 +23,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 
 val TvBackground = Color(0xFF0A0A0A)
 val TvSurface = Color(0xFF1A1A1A)
@@ -41,22 +48,24 @@ val youtubeQueue = listOf(
 @Composable
 fun TvDashboardScreen() {
     var state by remember { mutableStateOf(TvPlayerState()) }
-
-    // Hora dentro del composable
-    val currentTime by produceState(
-        initialValue = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-            .format(java.util.Date())
-    ) {
-        while (true) {
-            kotlinx.coroutines.delay(60_000)
-            value = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                .format(java.util.Date())
-        }
-    }
+    var localProgress by remember { mutableStateOf(0f) }
 
     LaunchedEffect(Unit) {
         FirebaseTvSync.observePlayerState().collect { newState ->
+            if (newState.currentTitle != state.currentTitle) {
+                localProgress = 0f
+            }
             state = newState
+            localProgress = newState.progress
+        }
+    }
+
+    // Timer local que avanza el progreso sin depender de Firebase
+    LaunchedEffect(state.isPlaying, state.currentTitle) {
+        while (state.isPlaying && state.duration > 0) {
+            delay(500)
+            val increment = 0.5f / state.duration.toFloat()
+            localProgress = (localProgress + increment).coerceIn(0f, 1f)
         }
     }
 
@@ -93,7 +102,7 @@ fun TvDashboardScreen() {
                 .fillMaxSize()
                 .padding(48.dp)
         ) {
-            // Header
+            // ── Header ────────────────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -117,7 +126,6 @@ fun TvDashboardScreen() {
                         }
                     )
                     TvStatusDot(label = "Phone", color = Color.Cyan)
-                    Text(currentTime, color = TvSubtext, fontSize = 14.sp)
                 }
             }
 
@@ -145,7 +153,7 @@ fun TvDashboardScreen() {
             } else if (state.source == "youtube") {
                 TvYouTubeLayout(state = state)
             } else {
-                TvMusicLayout(state = state)
+                TvMusicLayout(state = state, progress = localProgress)
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -164,7 +172,7 @@ fun TvDashboardScreen() {
 }
 
 @Composable
-fun TvMusicLayout(state: TvPlayerState) {
+fun TvMusicLayout(state: TvPlayerState, progress: Float) {
     val accentColor = when (state.source) {
         "spotify" -> TvGreen
         "radio" -> TvPink
@@ -176,7 +184,7 @@ fun TvMusicLayout(state: TvPlayerState) {
         horizontalArrangement = Arrangement.spacedBy(48.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Columna izquierda — portada + info + controles
+        // ── Columna izquierda ─────────────────────────────────────────────────
         Column(
             modifier = Modifier.weight(1.5f),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -240,18 +248,35 @@ fun TvMusicLayout(state: TvPlayerState) {
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
 
+                    // Barra de progreso + tiempo
                     if (state.source == "radio") {
                         TvRadioProgressBar()
                     } else {
-                        LinearProgressIndicator(
-                            progress = { 0f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = accentColor,
-                            trackColor = TvSurface
-                        )
+                        Column {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = accentColor,
+                                trackColor = TvSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    formatTvTime((progress * state.duration * 1000L).toLong()),
+                                    color = TvSubtext, fontSize = 12.sp
+                                )
+                                Text(
+                                    formatTvTime(state.duration * 1000L),
+                                    color = TvSubtext, fontSize = 12.sp
+                                )
+                            }
+                        }
                     }
 
                     // Controles
@@ -318,7 +343,7 @@ fun TvMusicLayout(state: TvPlayerState) {
             }
         }
 
-        // Columna derecha — Cola de reproducción
+        // ── Columna derecha — Cola ────────────────────────────────────────────
         Column(
             modifier = Modifier.weight(0.8f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -330,7 +355,7 @@ fun TvMusicLayout(state: TvPlayerState) {
             )
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Canción actual destacada
+            // Canción actual
             Surface(
                 color = accentColor.copy(alpha = 0.2f),
                 shape = RoundedCornerShape(8.dp)
@@ -350,8 +375,7 @@ fun TvMusicLayout(state: TvPlayerState) {
                         )
                         Text(
                             state.currentArtist,
-                            color = TvSubtext, fontSize = 12.sp,
-                            maxLines = 1
+                            color = TvSubtext, fontSize = 12.sp, maxLines = 1
                         )
                     }
                     Text("▶", color = accentColor, fontSize = 12.sp)
@@ -360,7 +384,6 @@ fun TvMusicLayout(state: TvPlayerState) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Próximas canciones desde Firebase
             if (state.queue.isEmpty()) {
                 Text(
                     "No hay canciones en cola",
@@ -400,6 +423,14 @@ fun TvMusicLayout(state: TvPlayerState) {
     }
 }
 
+fun formatTvTime(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val totalSeconds = ms / 1000
+    val min = totalSeconds / 60
+    val sec = totalSeconds % 60
+    return "%d:%02d".format(min, sec)
+}
+
 @Composable
 fun TvYouTubeLayout(state: TvPlayerState) {
     Row(
@@ -410,46 +441,46 @@ fun TvYouTubeLayout(state: TvPlayerState) {
             modifier = Modifier.weight(1.5f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(TvSurface)
-            ) {
-                AsyncImage(
-                    model = state.currentCoverUrl.ifEmpty { null },
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    alpha = 0.6f
+            val videoId = state.audioUrl
+                .removePrefix("https://www.youtube.com/watch?v=")
+                .removePrefix("youtube:")
+                .take(11)
+
+            if (videoId.isNotEmpty()) {
+                AndroidView(
+                    factory = { context ->
+                        WebView(context).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            webViewClient = WebViewClient()
+                            webChromeClient = WebChromeClient()
+                            settings.apply {
+                                javaScriptEnabled = true
+                                mediaPlaybackRequiresUserGesture = false
+                                domStorageEnabled = true
+                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                userAgentString = "Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36"
+                            }
+                            loadUrl("https://www.youtube.com/embed/$videoId?autoplay=1&controls=1")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 )
+            } else {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(TvSurface),
                     contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        color = TvRed.copy(alpha = 0.9f),
-                        shape = CircleShape,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("▶", color = Color.White, fontSize = 24.sp)
-                        }
-                    }
-                }
-                Surface(
-                    color = TvRed,
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        "MODO INMERSIVO", color = Color.White, fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Text("▶", color = TvRed, fontSize = 48.sp)
                 }
             }
 
@@ -457,35 +488,14 @@ fun TvYouTubeLayout(state: TvPlayerState) {
                 state.currentTitle, color = Color.White, fontSize = 22.sp,
                 fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis
             )
-
-            Text("${state.currentArtist} · 1.2B vistas", color = TvSubtext, fontSize = 14.sp)
-
-            LinearProgressIndicator(
-                progress = { 0.35f },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp)),
-                color = TvRed, trackColor = TvSurface
-            )
+            Text(state.currentArtist, color = TvSubtext, fontSize = 14.sp)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("1:09", color = TvSubtext, fontSize = 12.sp)
-                Text("3:20", color = TvSubtext, fontSize = 12.sp)
-            }
-
-            // Controles YouTube
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.Center
             ) {
                 Surface(
-                    color = TvRed,
-                    shape = CircleShape,
+                    color = TvRed, shape = CircleShape,
                     modifier = Modifier
                         .size(48.dp)
                         .clickable { FirebaseTvSync.sendPlayPause(state.isPlaying) }
@@ -498,12 +508,6 @@ fun TvYouTubeLayout(state: TvPlayerState) {
                     }
                 }
             }
-
-            Text(
-                "Controlado desde: Smartphone · Firebase",
-                color = TvSubtext.copy(alpha = 0.5f), fontSize = 11.sp,
-                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
-            )
         }
 
         Column(
@@ -515,7 +519,6 @@ fun TvYouTubeLayout(state: TvPlayerState) {
                 fontWeight = FontWeight.Bold, letterSpacing = 2.sp
             )
             Spacer(modifier = Modifier.height(4.dp))
-
             youtubeQueue.forEachIndexed { index, (title, channel, duration) ->
                 Surface(
                     color = if (index == 0) TvRed.copy(alpha = 0.2f) else Color.Transparent,
@@ -525,8 +528,7 @@ fun TvYouTubeLayout(state: TvPlayerState) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
@@ -540,7 +542,6 @@ fun TvYouTubeLayout(state: TvPlayerState) {
                     }
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
             Text("Canal", color = TvSubtext, fontSize = 12.sp)
             Text(

@@ -89,13 +89,16 @@ fun JamendoScreen(
         bottomBar = {
             if (playbackState.currentSong.title.isNotEmpty()) {
                 val progress by viewModel.progress.collectAsState()
+                val playOnTv by viewModel.playOnTv.collectAsState()
                 PlayerBar(
                     song = playbackState.currentSong,
                     isPlaying = playbackState.isPlaying,
                     progress = progress,
+                    playOnTv = playOnTv,
                     onTogglePlay = { viewModel.togglePlayPause() },
                     onNext = { viewModel.nextSong() },
-                    onPrevious = { viewModel.previousSong() }
+                    onPrevious = { viewModel.previousSong() },
+                    onToggleTv = { viewModel.togglePlayOnTv() }
                 )
             }
         }

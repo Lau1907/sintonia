@@ -27,13 +27,16 @@ class SpotifyRepository {
         .build()
         .create(SpotifyApi::class.java)
 
+    private fun buildAuthHeader(token: String): String =
+        if (token.startsWith("Bearer ")) token else "Bearer $token"
+
     suspend fun searchTracks(query: String, token: String): List<Song> {
         val cleanQuery = query.trim()
 
         if (cleanQuery.isEmpty()) return emptyList()
 
         return try {
-            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val authHeader = buildAuthHeader(token)
 
             Log.d("SpotifyRepository", "Buscando '$cleanQuery' con limit=20")
 
@@ -70,7 +73,7 @@ class SpotifyRepository {
 
     suspend fun getFeaturedTracks(token: String): List<Song> {
         return try {
-            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val authHeader = buildAuthHeader(token)
             val response = api.searchTracks(
                 authHeader = authHeader,
                 query = "top hits 2024",
@@ -92,6 +95,48 @@ class SpotifyRepository {
         } catch (e: Exception) {
             Log.e("SpotifyRepository", "Error cargando featured: ${e.localizedMessage}")
             emptyList()
+        }
+    }
+
+    // ===== Spotify Connect =====
+
+    /** Regresa la lista de dispositivos donde el usuario tiene Spotify abierto (cel, TV, etc.) */
+    suspend fun getAvailableDevices(token: String): List<SpotifyDevice> {
+        return try {
+            val authHeader = buildAuthHeader(token)
+            val response = api.getAvailableDevices(authHeader)
+            Log.d("SpotifyRepository", "Dispositivos encontrados: ${response.devices.map { "${it.name} (${it.type})" }}")
+            response.devices
+        } catch (e: HttpException) {
+            val errorBody = e.response()?.errorBody()?.string()
+            Log.e("SpotifyRepository", "Error HTTP obteniendo dispositivos ${e.code()}: $errorBody")
+            emptyList()
+        } catch (e: Exception) {
+            Log.e("SpotifyRepository", "Error general obteniendo dispositivos: ${e.localizedMessage}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Transfiere la reproducción activa al dispositivo indicado.
+     * Devuelve true si Spotify aceptó el cambio (204 No Content).
+     */
+    suspend fun transferPlayback(token: String, deviceId: String, play: Boolean = true): Boolean {
+        return try {
+            val authHeader = buildAuthHeader(token)
+            val response = api.transferPlayback(
+                authHeader = authHeader,
+                body = TransferPlaybackRequest(device_ids = listOf(deviceId), play = play)
+            )
+            Log.d("SpotifyRepository", "Transferir a $deviceId -> code ${response.code()}")
+            response.isSuccessful
+        } catch (e: HttpException) {
+            val errorBody = e.response()?.errorBody()?.string()
+            Log.e("SpotifyRepository", "Error HTTP transfiriendo ${e.code()}: $errorBody")
+            false
+        } catch (e: Exception) {
+            Log.e("SpotifyRepository", "Error general transfiriendo: ${e.localizedMessage}", e)
+            false
         }
     }
 }

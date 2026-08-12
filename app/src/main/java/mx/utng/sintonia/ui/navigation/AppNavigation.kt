@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import mx.utng.sintonia.ui.screens.DownloadsScreen
+import mx.utng.sintonia.ui.screens.FavoritesScreen
 import mx.utng.sintonia.ui.screens.HomeScreen
 import mx.utng.sintonia.ui.screens.JamendoScreen
 import mx.utng.sintonia.ui.screens.QueueScreen
@@ -109,6 +110,9 @@ fun AppNavigation(viewModel: PlayerViewModel) {
             }
             composable("youtube") {
                 YouTubeScreen(navController = navController, viewModel = viewModel)
+            }
+            composable("favorites") {
+                FavoritesScreen(viewModel = viewModel, navController = navController)
             }
         }
     }

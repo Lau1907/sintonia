@@ -95,6 +95,112 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _youtubeVideos = MutableStateFlow<List<YouTubeVideo>>(emptyList())
     val youtubeVideos: StateFlow<List<YouTubeVideo>> = _youtubeVideos
 
+    // ============ TV ============
+    private val _playOnTv = MutableStateFlow(false)
+    val playOnTv: StateFlow<Boolean> = _playOnTv
+
+    /**
+     * true  -> el audio real debe sonar en la TV (el cel NO debe reproducir localmente)
+     * false -> el audio real debe sonar en el cel (comportamiento normal)
+     */
+    private fun isLocal(): Boolean = !_playOnTv.value
+
+    /**
+     * Cambia entre reproducir en el cel o en la TV.
+     * - Al activar TV: pausa el audio local (Exo/Spotify) pero deja isPlaying=true en Firebase
+     *   para que la TV arranque a reproducir desde ahí.
+     * - Al desactivar TV: retoma el audio local desde donde se haya quedado el estado.
+     */
+    fun togglePlayOnTv() {
+        val activandoTv = !_playOnTv.value
+        _playOnTv.value = activandoTv
+        firebaseRepo.updatePlayOnTv(activandoTv)
+
+        if (_playbackState.value.source == "spotify") {
+            // Spotify Connect mueve la reproducción él solo entre dispositivos;
+            // no tocamos exoPlayer ni spotifyPlayer.pause/resume aquí.
+            transferSpotifyPlayback(toTv = activandoTv)
+            return
+        }
+
+        if (activandoTv) {
+            // Silenciar el cel, el audio ahora "vive" en la TV
+            exoPlayer.pause()
+        } else {
+            // Recuperar el audio en el cel si se supone que estaba sonando
+            if (_playbackState.value.isPlaying) {
+                when (_playbackState.value.source) {
+                    "radio" -> {
+                        val streamUrl = _playbackState.value.currentSong.audioUrl
+                        exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = true
+                    }
+                    else -> {
+                        // Si el reproductor no tenía nada cargado (p.ej. la canción cambió
+                        // mientras estabas en modo TV), lo recargamos desde audioUrl
+                        if (exoPlayer.currentMediaItem == null) {
+                            exoPlayer.setMediaItem(
+                                MediaItem.fromUri(_playbackState.value.currentSong.audioUrl)
+                            )
+                            exoPlayer.prepare()
+                        }
+                        exoPlayer.playWhenReady = true
+                        exoPlayer.play()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Busca los dispositivos donde el usuario tiene Spotify abierto y transfiere
+     * la reproducción a la TV (toTv=true) o de regreso al cel (toTv=false).
+     *
+     * El matching por "type" es lo estándar que regresa Spotify (Smartphone, TV,
+     * Computer, Speaker, AVR...). Si tu TV aparece con otro type/name distinto,
+     * revisa el log "SpotifyRepository" -> "Dispositivos encontrados" y ajusta
+     * el filtro de abajo.
+     */
+    private fun transferSpotifyPlayback(toTv: Boolean) {
+        val token = _spotifyToken.value ?: run {
+            Log.e("PlayerViewModel", "No hay token de Spotify, no se puede transferir")
+            return
+        }
+        viewModelScope.launch {
+            val devices = spotifyRepository.getAvailableDevices(token)
+            if (devices.isEmpty()) {
+                Log.e("PlayerViewModel", "Spotify no regresó ningún dispositivo disponible")
+                return@launch
+            }
+
+            val target = if (toTv) {
+                devices.firstOrNull { it.type.equals("TV", ignoreCase = true) }
+                    ?: devices.firstOrNull { it.name.contains("TV", ignoreCase = true) }
+            } else {
+                devices.firstOrNull { it.type.equals("Smartphone", ignoreCase = true) }
+                    ?: devices.firstOrNull { !it.type.equals("TV", ignoreCase = true) }
+            }
+
+            if (target?.id == null) {
+                Log.e(
+                    "PlayerViewModel",
+                    "No se encontró dispositivo ${if (toTv) "de TV" else "del cel"} entre: " +
+                            devices.joinToString { "${it.name} (${it.type})" }
+                )
+                return@launch
+            }
+
+            val ok = spotifyRepository.transferPlayback(
+                token = token,
+                deviceId = target.id,
+                play = _playbackState.value.isPlaying
+            )
+            Log.d("PlayerViewModel", "Transferencia a '${target.name}' exitosa=$ok")
+        }
+    }
+    // ============ FIN TV ============
+
     fun searchYouTubeVideos(query: String) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -116,10 +222,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         loadPopularTracks()
         listenForWearCommands()
         listenForDownloads()
+        listenForFavorites()
         trackProgress()
         observeSpotifyState()
         setupExoPlayerListener()
         listenForTvCommands()
+        listenForPlayOnTvFromFirebase()
+    }
+
+    /**
+     * Firebase es la fuente de verdad de playOnTv. Sin esto, si cierras la app
+     * con el modo TV activado, al reabrir el cel arranca creyendo que está en
+     * false mientras Firebase sigue en true -> termina sonando en los dos lados.
+     */
+    private fun listenForPlayOnTvFromFirebase() {
+        FirebaseDatabase.getInstance().reference
+            .child("playback").child("playOnTv")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val valorRemoto = snapshot.getValue(Boolean::class.java) ?: false
+                    if (valorRemoto != _playOnTv.value) {
+                        _playOnTv.value = valorRemoto
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
     }
 
     private fun listenForTvCommands() {
@@ -177,7 +304,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         viewModelScope.launch {
-            spotifyPlayer.progress.collect { _spotifyProgress.value = it }
+            spotifyPlayer.progress.collect { progress ->
+                _spotifyProgress.value = progress
+                if (_playbackState.value.source == "spotify") {
+                    firebaseRepo.updateProgress(progress)  // ← agrega esto
+                }
+            }
         }
         viewModelScope.launch {
             spotifyPlayer.duration.collect { _spotifyDuration.value = it }
@@ -193,20 +325,44 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             spotifyPlayer.currentTrackName.collect { trackName ->
                 if (trackName.isNotEmpty() && _playbackState.value.source == "spotify") {
-                    // Esperar a que todos los valores estén actualizados
-                    val artist = spotifyPlayer.currentArtist.value
-                    val uri = spotifyPlayer.currentTrackUri.value
-                    val cover = spotifyPlayer.currentAlbumCover.value
-
                     if (trackName != _playbackState.value.currentSong.title) {
                         val updatedSong = _playbackState.value.currentSong.copy(
                             title = trackName,
-                            artist = artist,
-                            audioUrl = uri,
-                            albumCover = cover
+                            artist = spotifyPlayer.currentArtist.value,
+                            audioUrl = spotifyPlayer.currentTrackUri.value,
+                            albumCover = spotifyPlayer.currentAlbumCover.value
                         )
                         _playbackState.value = _playbackState.value.copy(currentSong = updatedSong)
                         firebaseRepo.updateCurrentSong(updatedSong)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            spotifyPlayer.onTrackFinished.collect { finished ->
+                if (finished && _playbackState.value.source == "spotify") {
+                    spotifyPlayer.resetTrackFinished()
+                    if (_queue.value.isNotEmpty()) {
+                        val nextSong = _queue.value.first()
+                        // Pequeño delay para que Spotify termine correctamente
+                        delay(500)
+                        playFromQueue(nextSong)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            spotifyPlayer.onTrackChanged.collect { newUri ->
+                if (newUri.isNotEmpty() && _playbackState.value.source == "spotify") {
+                    val isInOurQueue = _queue.value.any { it.audioUrl == newUri }
+                    val isCurrentSong = newUri == _playbackState.value.currentSong.audioUrl
+
+                    // Si Spotify cambió a una canción que no está en nuestra cola
+                    // y no es la canción actual, pausar y reproducir la nuestra
+                    if (!isInOurQueue && !isCurrentSong && _queue.value.isNotEmpty()) {
+                        delay(300)
+                        val nextSong = _queue.value.first()
+                        playFromQueue(nextSong)
                     }
                 }
             }
@@ -217,7 +373,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             while (true) {
                 if (exoPlayer.isPlaying && exoPlayer.duration > 0) {
-                    _progress.value = exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
+                    val p = exoPlayer.currentPosition.toFloat() / exoPlayer.duration.toFloat()
+                    _progress.value = p
+                    firebaseRepo.updateProgress(p)
                 }
                 delay(500)
             }
@@ -266,6 +424,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playYouTubeVideo(video: YouTubeVideo) {
+        // ← Detener todo lo que esté sonando localmente
+        if (_playbackState.value.source == "spotify") {
+            spotifyPlayer.pause()
+        }
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+
         val song = Song(
             id = video.id,
             title = video.title,
@@ -370,29 +535,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playSongSpotify(song: Song, context: Context) {
-        stopAll() // ← detiene jamendo y radio antes de reproducir spotify
-        if (spotifyPlayer.isConnected.value) {
-            spotifyPlayer.playSong(song.audioUrl)
-
-            // Agregar siguientes canciones a la cola de Spotify
-            val currentList = _spotifySongs.value
-            val currentIndex = currentList.indexOfFirst { it.id == song.id }
-            if (currentIndex != -1) {
-                val nextSongs = currentList.subList(
-                    (currentIndex + 1).coerceAtMost(currentList.size),
-                    currentList.size
-                )
-                nextSongs.forEach { nextSong ->
-                    spotifyPlayer.addToQueue(nextSong.audioUrl)
+        stopAll()
+        // Solo conectamos/reproducimos Spotify localmente si el audio vive en el cel
+        if (isLocal()) {
+            if (spotifyPlayer.isConnected.value) {
+                spotifyPlayer.playSong(song.audioUrl)
+                spotifyPlayer.clearSpotifyQueue()
+            } else {
+                spotifyPlayer.connect()
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse(song.audioUrl)
+                    putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://${context.packageName}"))
                 }
+                context.startActivity(intent)
             }
-        } else {
-            spotifyPlayer.connect()
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse(song.audioUrl)
-                putExtra(Intent.EXTRA_REFERRER, Uri.parse("android-app://${context.packageName}"))
-            }
-            context.startActivity(intent)
         }
         val newState = PlaybackState(isPlaying = true, currentSong = song, source = "spotify")
         _playbackState.value = newState
@@ -412,11 +568,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playSong(song: Song) {
-        stopAll() // ← detiene spotify y radio antes de reproducir jamendo
-        val mediaItem = MediaItem.fromUri(song.audioUrl)
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
+        // ← Pausar Spotify si estaba activo
+        if (_playbackState.value.source == "spotify") {
+            spotifyPlayer.pause()
+        }
+
+        // Solo tocamos el ExoPlayer local si el audio debe sonar en el cel.
+        // Si está en modo TV, nomás actualizamos el estado y la TV lo recoge.
+        if (isLocal()) {
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            val mediaItem = MediaItem.fromUri(song.audioUrl)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
+        }
         _progress.value = 0f
 
         val newState = PlaybackState(
@@ -431,9 +597,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun playRadioStation(id: String, name: String, city: String, streamUrl: String) {
         stopAll() // ← detiene spotify y jamendo antes de reproducir radio
-        exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
+
+        if (isLocal()) {
+            exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
+        }
         _progress.value = 0f
 
         val radioSong = Song(
@@ -468,18 +637,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         when (song.source) {
             "spotify" -> {
                 stopAll()
-                if (spotifyPlayer.isConnected.value) {
-                    spotifyPlayer.playSong(song.audioUrl)
-                } else {
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse(song.audioUrl)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        putExtra(
-                            Intent.EXTRA_REFERRER,
-                            Uri.parse("android-app://${appContext.packageName}")
-                        )
+                if (isLocal()) {
+                    if (spotifyPlayer.isConnected.value) {
+                        spotifyPlayer.playSong(song.audioUrl)
+                    } else {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse(song.audioUrl)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            putExtra(
+                                Intent.EXTRA_REFERRER,
+                                Uri.parse("android-app://${appContext.packageName}")
+                            )
+                        }
+                        appContext.startActivity(intent)
                     }
-                    appContext.startActivity(intent)
                 }
                 val newState = PlaybackState(
                     isPlaying = true, currentSong = song, source = "spotify"
@@ -492,10 +663,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 playRadioStation(song.id, song.title, song.artist, song.audioUrl)
             }
             else -> {
-                stopAll()
-                exoPlayer.setMediaItem(MediaItem.fromUri(song.audioUrl))
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
+                // ← Si venía de Spotify, pausarlo primero
+                if (_playbackState.value.source == "spotify") {
+                    spotifyPlayer.pause()
+                }
+
+                if (isLocal()) {
+                    exoPlayer.stop()
+                    exoPlayer.clearMediaItems()
+                    exoPlayer.setMediaItem(MediaItem.fromUri(song.audioUrl))
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                }
                 _progress.value = 0f
 
                 val newState = PlaybackState(
@@ -512,61 +691,63 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleFavorite(song: Song) {
+        // No mutamos _favorites directo: escribimos a Firebase y dejamos que
+        // listenForFavorites() actualice el StateFlow cuando llegue el cambio.
         if (_favorites.value.any { it.id == song.id }) {
-            _favorites.value = _favorites.value.filter { it.id != song.id }
+            firebaseRepo.removeFavorite(song.id)
         } else {
-            _favorites.value = _favorites.value + song
+            firebaseRepo.saveFavorite(song)
+        }
+    }
+
+    private fun listenForFavorites() {
+        viewModelScope.launch {
+            firebaseRepo.observeFavorites().collect { list ->
+                _favorites.value = list
+            }
         }
     }
 
     fun togglePlayPause() {
-        if (_playbackState.value.source == "spotify") {
-            if (_playbackState.value.isPlaying) {
-                spotifyPlayer.pause()
+        val nuevoIsPlaying = !_playbackState.value.isPlaying
+
+        if (isLocal()) {
+            // Comportamiento normal: controla el audio en el cel
+            if (_playbackState.value.source == "spotify") {
+                if (nuevoIsPlaying) spotifyPlayer.resume() else spotifyPlayer.pause()
+            } else if (_playbackState.value.source == "radio") {
+                if (!nuevoIsPlaying) {
+                    exoPlayer.stop()
+                } else {
+                    val streamUrl = _playbackState.value.currentSong.audioUrl
+                    exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                }
             } else {
-                spotifyPlayer.resume()
-            }
-            _playbackState.value = _playbackState.value.copy(
-                isPlaying = !_playbackState.value.isPlaying
-            )
-            firebaseRepo.updateIsPlaying(_playbackState.value.isPlaying)
-        } else if (_playbackState.value.source == "radio") {
-            // Para radio: stop/play en lugar de pause
-            if (exoPlayer.isPlaying) {
-                exoPlayer.stop()
-                firebaseRepo.updateIsPlaying(false)
-                _playbackState.value = _playbackState.value.copy(isPlaying = false)
-            } else {
-                // Volver a cargar el stream
-                val streamUrl = _playbackState.value.currentSong.audioUrl
-                exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
-                firebaseRepo.updateIsPlaying(true)
-                _playbackState.value = _playbackState.value.copy(isPlaying = true)
-            }
-        } else {
-            if (exoPlayer.isPlaying) {
-                exoPlayer.pause()
-                firebaseRepo.updateIsPlaying(false)
-                _playbackState.value = _playbackState.value.copy(isPlaying = false)
-            } else {
-                exoPlayer.play()
-                firebaseRepo.updateIsPlaying(true)
-                _playbackState.value = _playbackState.value.copy(isPlaying = true)
+                if (nuevoIsPlaying) exoPlayer.play() else exoPlayer.pause()
             }
         }
+        // Si NO es local (playOnTv = true), no tocamos exoPlayer/spotifyPlayer:
+        // solo actualizamos el estado y la TV reacciona a este cambio en Firebase.
+
+        _playbackState.value = _playbackState.value.copy(isPlaying = nuevoIsPlaying)
+        firebaseRepo.updateIsPlaying(nuevoIsPlaying)
     }
 
     fun nextSong() {
-        if (_playbackState.value.source == "spotify") {
-            spotifyPlayer.skipNext()
-            return
-        }
+        // ← Primero siempre revisa la cola, sin importar la fuente
         if (_queue.value.isNotEmpty()) {
             playFromQueue(_queue.value.first())
             return
         }
+
+        // Solo si la cola está vacía, usa el control nativo de cada fuente
+        if (_playbackState.value.source == "spotify") {
+            if (isLocal()) spotifyPlayer.skipNext()
+            return
+        }
+
         val currentList = _songs.value
         if (currentList.isEmpty()) return
         val currentIndex = currentList.indexOfFirst {
@@ -579,7 +760,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun previousSong() {
         if (_playbackState.value.source == "spotify") {
-            spotifyPlayer.skipPrevious()
+            if (isLocal()) spotifyPlayer.skipPrevious()
             return
         }
         val currentList = _songs.value

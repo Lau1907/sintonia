@@ -125,14 +125,17 @@ fun SpotifyScreen(
         },
         bottomBar = {
             if (playbackState.currentSong.title.isNotEmpty() && playbackState.source == "spotify") {
+                val playOnTv by viewModel.playOnTv.collectAsState()
                 SpotifyPlayerBar(
                     song = playbackState.currentSong,
                     isPlaying = playbackState.isPlaying,
                     progress = spotifyProgress,
                     duration = spotifyDuration,
+                    playOnTv = playOnTv,
                     onTogglePlay = { viewModel.togglePlayPause() },
                     onNext = { viewModel.nextSong() },
-                    onPrevious = { viewModel.previousSong() }
+                    onPrevious = { viewModel.previousSong() },
+                    onToggleTv = { viewModel.togglePlayOnTv() }
                 )
             }
         }
@@ -284,9 +287,11 @@ fun SpotifyPlayerBar(
     isPlaying: Boolean,
     progress: Float,
     duration: Long,
+    playOnTv: Boolean,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
-    onPrevious: () -> Unit
+    onPrevious: () -> Unit,
+    onToggleTv: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -316,6 +321,15 @@ fun SpotifyPlayerBar(
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
+                // Botón de destino de reproducción (phone / tv)
+                IconButton(onClick = onToggleTv) {
+                    Icon(
+                        if (playOnTv) Icons.Default.Tv else Icons.Default.Smartphone,
+                        contentDescription = if (playOnTv) "Reproduciendo en TV" else "Reproduciendo en teléfono",
+                        tint = if (playOnTv) SintoniaGreen else SintoniaSubtext
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 Surface(
                     color = SintoniaGreen,
                     shape = RoundedCornerShape(6.dp)
@@ -386,13 +400,6 @@ fun SpotifyPlayerBar(
         }
     }
 }
-
-fun formatTime(seconds: Int): String {
-    val min = seconds / 60
-    val sec = seconds % 60
-    return "%d:%02d".format(min, sec)
-}
-
 @Composable
 fun SpotifySongCard(
     song: Song,

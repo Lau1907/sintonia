@@ -31,6 +31,7 @@ import mx.utng.sintonia.ui.theme.SintoniaGreen
 import mx.utng.sintonia.ui.theme.SintoniaPink
 import mx.utng.sintonia.ui.theme.SintoniaSubtext
 import mx.utng.sintonia.viewmodel.PlayerViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +45,46 @@ fun HomeScreen(
     val downloads by viewModel.downloads.collectAsState()
     val songs by viewModel.songs.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val spotifyProgress by viewModel.spotifyProgress.collectAsState()
+    val spotifyDuration by viewModel.spotifyDuration.collectAsState()
+
+    // Progreso local que avanza suavemente sin depender de Firebase
+    var localProgress by remember { mutableStateOf(0f) }
+
+    // Cuando cambia la canción reinicia el progreso
+    LaunchedEffect(playbackState.currentSong.id) {
+        localProgress = if (currentSource == "spotify") spotifyProgress else progress
+    }
+
+    // Timer local — avanza cada 500ms
+    LaunchedEffect(playbackState.isPlaying, playbackState.currentSong.id, currentSource) {
+        while (playbackState.isPlaying) {
+            delay(500)
+            when (currentSource) {
+                "spotify" -> {
+                    if (spotifyDuration > 0) {
+                        val increment = 0.5f / (spotifyDuration / 1000f)
+                        localProgress = (localProgress + increment).coerceIn(0f, 1f)
+                    }
+                }
+                "jamendo" -> {
+                    val duration = playbackState.currentSong.duration.toFloat()
+                    if (duration > 0) {
+                        val increment = 0.5f / duration
+                        localProgress = (localProgress + increment).coerceIn(0f, 1f)
+                    }
+                }
+            }
+        }
+    }
+
+    // Sincroniza cuando llega un update real de Firebase o Spotify
+    LaunchedEffect(progress) {
+        if (currentSource != "spotify") localProgress = progress
+    }
+    LaunchedEffect(spotifyProgress) {
+        if (currentSource == "spotify") localProgress = spotifyProgress
+    }
 
     Scaffold(
         modifier = modifier,
@@ -57,6 +98,13 @@ fun HomeScreen(
                             color = SintoniaGreen, fontSize = 20.sp
                         )
                         Spacer(modifier = Modifier.weight(1f))
+                        IconButton(onClick = { navController?.navigate("favorites") }) {
+                            Icon(
+                                Icons.Default.Favorite,
+                                contentDescription = "Favoritos",
+                                tint = SintoniaPink
+                            )
+                        }
                         Surface(
                             color = SintoniaGreen.copy(alpha = 0.2f),
                             shape = RoundedCornerShape(8.dp)
@@ -168,7 +216,11 @@ fun HomeScreen(
                         song = playbackState.currentSong,
                         isPlaying = playbackState.isPlaying,
                         source = currentSource,
-                        progress = progress,
+                        progress = localProgress,
+                        duration = if (currentSource == "spotify")
+                            (spotifyDuration / 1000).toInt()
+                        else
+                            playbackState.currentSong.duration,
                         onTogglePlay = { viewModel.togglePlayPause() },
                         onNext = { viewModel.nextSong() },
                         onPrevious = { viewModel.previousSong() }
@@ -191,7 +243,7 @@ fun SourceButton(
 ) {
     Card(
         modifier = modifier
-            .height(120.dp)  // ← más alto
+            .height(120.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = if (selected) color.copy(alpha = 0.25f) else SintoniaCard
@@ -203,17 +255,18 @@ fun SourceButton(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.Center,  // ← centrado
-            horizontalAlignment = Alignment.CenterHorizontally  // ← centrado
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
                 icon, contentDescription = null, tint = color,
-                modifier = Modifier.size(36.dp)  // ← ícono más grande
+                modifier = Modifier.size(36.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 label, color = Color.White, fontWeight = FontWeight.Bold,
-                fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                fontSize = 14.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Text(
                 sublabel, color = color, fontSize = 12.sp,
@@ -229,6 +282,7 @@ fun NowPlayingCard(
     isPlaying: Boolean,
     source: String,
     progress: Float,
+    duration: Int = 0,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit
@@ -279,7 +333,7 @@ fun NowPlayingCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Barra de progreso — animada para radio, real para canciones
+            // Barra de progreso
             if (source == "radio") {
                 val infiniteTransition = rememberInfiniteTransition(label = "radio")
                 val radioProgress by infiniteTransition.animateFloat(
@@ -300,16 +354,37 @@ fun NowPlayingCard(
                     color = SintoniaPink,
                     trackColor = SintoniaDark
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("● En vivo", color = SintoniaPink, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Radio", color = SintoniaSubtext, fontSize = 10.sp)
+                }
             } else {
+                val accentColor = if (source == "spotify") SintoniaGreen else Color(0xFF4A9EFF)
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp)
                         .clip(RoundedCornerShape(2.dp)),
-                    color = SintoniaGreen,
+                    color = accentColor,
                     trackColor = SintoniaDark
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        formatTime((progress * duration).toInt()),
+                        color = SintoniaSubtext, fontSize = 10.sp
+                    )
+                    Text(
+                        formatTime(duration),
+                        color = SintoniaSubtext, fontSize = 10.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -348,6 +423,13 @@ fun NowPlayingCard(
             }
         }
     }
+}
+
+fun formatTime(seconds: Int): String {
+    if (seconds <= 0) return "0:00"
+    val min = seconds / 60
+    val sec = seconds % 60
+    return "%d:%02d".format(min, sec)
 }
 
 @Composable
@@ -452,14 +534,14 @@ fun PlayerBar(
     song: Song,
     isPlaying: Boolean,
     progress: Float = 0f,
+    playOnTv: Boolean = false,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
-    onPrevious: () -> Unit
+    onPrevious: () -> Unit,
+    onToggleTv: () -> Unit = {}
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(8.dp),
         colors = CardDefaults.cardColors(containerColor = SintoniaCard),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -471,28 +553,29 @@ fun PlayerBar(
                 AsyncImage(
                     model = song.albumCover,
                     contentDescription = null,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(6.dp)),
+                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)),
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        song.title, color = Color.White, fontSize = 13.sp,
+                    Text(song.title, color = Color.White, fontSize = 13.sp,
                         fontWeight = FontWeight.Medium, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        song.artist, color = SintoniaSubtext, fontSize = 11.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis)
+                    Text(song.artist, color = SintoniaSubtext, fontSize = 11.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                // Botón TV
+                IconButton(onClick = onToggleTv) {
+                    Icon(
+                        Icons.Default.Tv,
+                        contentDescription = "Reproducir en TV",
+                        tint = if (playOnTv) SintoniaGreen else SintoniaSubtext,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 IconButton(onClick = onPrevious) {
-                    Icon(
-                        Icons.Default.SkipPrevious, contentDescription = null,
-                        tint = SintoniaSubtext
-                    )
+                    Icon(Icons.Default.SkipPrevious, contentDescription = null,
+                        tint = SintoniaSubtext)
                 }
                 IconButton(onClick = onTogglePlay) {
                     Icon(
@@ -503,74 +586,51 @@ fun PlayerBar(
                     )
                 }
                 IconButton(onClick = onNext) {
-                    Icon(
-                        Icons.Default.SkipNext, contentDescription = null,
-                        tint = SintoniaSubtext
-                    )
+                    Icon(Icons.Default.SkipNext, contentDescription = null,
+                        tint = SintoniaSubtext)
                 }
             }
 
-            // Barra de progreso — animada para radio, real para canciones
+            // Barra de progreso
             if (song.source == "radio") {
                 val infiniteTransition = rememberInfiniteTransition(label = "radioBar")
                 val radioProgress by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 1f,
+                    initialValue = 0f, targetValue = 1f,
                     animationSpec = infiniteRepeatable(
                         animation = tween(3000, easing = LinearEasing),
                         repeatMode = RepeatMode.Restart
-                    ),
-                    label = "radioProgress"
+                    ), label = "radioProgress"
                 )
                 LinearProgressIndicator(
                     progress = { radioProgress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = SintoniaPink,
-                    trackColor = SintoniaDark
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = SintoniaPink, trackColor = SintoniaDark
                 )
             } else {
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = SintoniaGreen,
-                    trackColor = SintoniaDark
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = SintoniaGreen, trackColor = SintoniaDark
                 )
             }
 
             // Tiempo
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
+                modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 if (song.source == "radio") {
-                    Text(
-                        "● En vivo", color = SintoniaPink, fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("● En vivo", color = SintoniaPink, fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold)
                     Text("Radio", color = SintoniaSubtext, fontSize = 10.sp)
                 } else {
-                    Text(
-                        formatTime((progress * song.duration).toInt()),
-                        color = SintoniaSubtext, fontSize = 10.sp
-                    )
-                    Text(
-                        formatTime(song.duration),
-                        color = SintoniaSubtext, fontSize = 10.sp
-                    )
+                    Text(formatTime((progress * song.duration).toInt()),
+                        color = SintoniaSubtext, fontSize = 10.sp)
+                    Text(formatTime(song.duration),
+                        color = SintoniaSubtext, fontSize = 10.sp)
                 }
             }
         }
-    }
-
-    fun formatTime(seconds: Int): String {
-        val min = seconds / 60
-        val sec = seconds % 60
-        return "%d:%02d".format(min, sec)
     }
 }
