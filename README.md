@@ -154,6 +154,15 @@ sintonia/
 ### Smartwatch — Pantalla de volumen
 <img width="533" height="497" alt="image" src="https://github.com/user-attachments/assets/6a15e339-26e7-4870-9b2b-1a9d5271e63a" />
 
+### Android TV — Pantalla de Spotify
+<img width="918" height="531" alt="WhatsApp Image 2026-08-12 at 12 05 28" src="https://github.com/user-attachments/assets/b18d2cfb-3c8a-4686-b6ee-bfb0b3ba5ad2" />
+
+### Android TV — Pantalla de Jamendo
+<img width="913" height="531" alt="WhatsApp Image 2026-08-12 at 12 06 33" src="https://github.com/user-attachments/assets/fb1880cb-a9d6-40c2-b870-6e5595621fd5" />
+
+### Android TV — Pantalla de Radio Garden
+<img width="912" height="523" alt="WhatsApp Image 2026-08-12 at 12 07 37" src="https://github.com/user-attachments/assets/366b7c4b-fa46-4e01-9607-ee9ca0fa1bfb" />
+
 ---
 
 ## 🔗 APIs Utilizadas
