@@ -1,11 +1,9 @@
 # 🎵 Sintonía — Control Multimedia Inteligente para el Ecosistema Digital
 
----
-
 ## 👩‍💻 Información del Proyecto
 
 | Campo | Detalle |
-|---|---|
+| :--- | :--- |
 | **Nombre del proyecto** | Sintonía |
 | **Estudiantes** | Medrano Hernández Vanesa Monserrat · Tapia Cid Laura Berenice |
 | **Matrícula** | 1222100447 · 1222100476 |
@@ -19,32 +17,41 @@
 
 ## 🎯 Objetivo
 
-Desarrollar un sistema de control multimedia multiplataforma que integre **Smartwatch**, **Smartphone** y **Smart TV**, combinando fuentes de contenido gratuito y legal (Jamendo y Radio Garden) con comunicación en tiempo real entre los tres dispositivos a través de Firebase Realtime Database.
+Desarrollar un sistema de control multimedia multiplataforma que integre Smartwatch, Smartphone y Smart TV, combinando fuentes de contenido gratuito y legal (Jamendo y Radio Garden) con comunicación en tiempo real entre los tres dispositivos a través de Firebase Realtime Database.
 
 ---
 
 ## 📱 Descripción de Funcionalidades
 
 ### Smartphone (Hub Central)
-- Selección de fuente de reproducción: Jamendo, Radio Garden
-- Búsqueda y reproducción de música gratuita con licencia Creative Commons (Jamendo API)
-- Reproductor de audio con controles play/pausa
-- Sincronización del estado de reproducción hacia Firebase en tiempo real
-- Recepción de comandos del Smartwatch
+*   **Selección de fuente:** Jamendo, Radio Garden y Spotify.
+*   **Búsqueda y reproducción:** Acceso a música gratuita con licencia Creative Commons (Jamendo API).
+*   **Pantalla de Favoritos:** Función para guardar pistas y acceder rápidamente a ellas, superando las limitaciones de descarga directa de servicios como Spotify.
+*   **Streaming Flexible:** Opción para alternar instantáneamente la salida de audio/video entre el Smartphone y la Smart TV.
+*   **Gestión:** Reproductor con controles y sincronización total del estado hacia Firebase.
+*   **Control Remoto:** Recepción de comandos enviados desde el Smartwatch.
 
 ### Smartwatch (Wear OS)
-- Visualización de la canción en reproducción (título y artista)
-- Control de play/pausa directamente desde la muñeca
-- Sincronización en tiempo real vía Firebase Realtime Database
+*   Visualización de la canción en reproducción (título y artista).
+*   Control de play/pausa directamente desde la muñeca.
+*   Sincronización en tiempo real vía Firebase Realtime Database.
 
 ### Android TV (Dashboard)
-- Dashboard visual que muestra la portada del álbum, título y artista
-- Indicador de estado (reproduciendo / pausado)
-- Actualización en tiempo real sin interacción del usuario
-- Controlado desde el smartphone vía Firebase
+*   **Dashboard Visual:** Muestra portada del álbum, título y artista.
+*   **Cola de Reproducción:** Visualización en tiempo real de la lista de próximas canciones, sincronizada automáticamente con el Smartphone.
+*   **Indicador de estado:** Estado (reproduciendo / pausado) y visualizador de ondas.
+*   **Control Remoto:** Actualización en tiempo real controlada desde el smartphone vía Firebase.
 
 ---
 
+## 🏗️ Diagrama de Arquitectura
+
+```mermaid
+graph TD
+    A[Smartphone - Hub Central] -->|Firebase Realtime Database| B[Android TV]
+    A -->|Wearable Data Layer| C[Wear OS]
+    A -->|Consume APIs| D[Jamendo, Radio Garden, Spotify, YouTube]
+```
 ## 🛠️ Tecnologías Utilizadas
 
 | Tecnología | Uso |
