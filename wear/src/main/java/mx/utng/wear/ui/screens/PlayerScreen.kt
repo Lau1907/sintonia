@@ -13,6 +13,28 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.*
 import mx.utng.wear.ui.WearState
 
+/**
+ * Pantalla principal de reproducción del smartwatch. Muestra el
+ * nombre de la app, el nivel de batería, título/artista de la canción
+ * actual y tres botones de control (anterior, play/pausa, siguiente)
+ * más un botón compacto para ir a la pantalla de volumen.
+ *
+ * Por qué existe: es la pantalla de "inicio" de la navegación
+ * (startDestination = "player" en WearApp) — el punto de partida
+ * desde el que el usuario controla la reproducción sin salir de la
+ * muñeca.
+ *
+ * @param state estado actual del reproductor (título, artista,
+ *   isPlaying, nivelBateria)
+ * @param onTogglePlay se invoca al presionar play/pausa; en WearApp
+ *   esto escribe el nuevo valor de isPlaying en Firebase
+ * @param onNext se invoca al presionar "siguiente"; escribe
+ *   "next" en playback/skipSong
+ * @param onPrevious se invoca al presionar "anterior"; escribe
+ *   "previous" en playback/skipSong
+ * @param onVolumeClick se invoca al presionar el botón de volumen;
+ *   navega a la pantalla "volume"
+ */
 @Composable
 fun PlayerScreen(
     state: WearState,

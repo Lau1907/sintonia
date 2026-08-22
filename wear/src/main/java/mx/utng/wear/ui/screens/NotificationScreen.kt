@@ -13,6 +13,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.*
 
+/**
+ * Pantalla de notificación de "nueva canción". WearApp navega aquí
+ * automáticamente (ver showNotification en WearApp.kt) cada vez que
+ * detecta un cambio de título distinto al anterior.
+ *
+ * Muestra un ícono de campana, el nivel de batería, el título/artista/
+ * fuente de la nueva canción, y dos botones: "Omitir" (saltar esta
+ * canción) y "OK" (aceptar y empezar a reproducir).
+ *
+ * Por qué existe: en un smartwatch no siempre se está viendo la
+ * pantalla del reproductor; esta pantalla funciona como una alerta
+ * puntual que el usuario puede resolver rápido (aceptar o saltar)
+ * sin tener que entrar manualmente a revisar qué está sonando.
+ *
+ * @param title título de la nueva canción
+ * @param artist artista de la nueva canción
+ * @param source fuente de la canción ("jamendo", "radio", etc.)
+ * @param nivelBateria porcentaje de batería del reloj a mostrar
+ * @param onOk se invoca al presionar "OK"; en WearApp pone
+ *   isPlaying = true en Firebase y regresa a la pantalla "player"
+ * @param onSkip se invoca al presionar "Omitir"; en WearApp escribe
+ *   "next" en playback/skipSong y regresa a la pantalla "player"
+ */
 @Composable
 fun NotificationScreen(
     title: String,

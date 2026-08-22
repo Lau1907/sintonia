@@ -11,6 +11,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.*
 
+/**
+ * Pantalla de control de volumen. Muestra el nivel de batería, el
+ * volumen actual como porcentaje y dos botones (−/+) para ajustarlo
+ * de 10 en 10.
+ *
+ * Por qué existe: separar el control de volumen de PlayerScreen
+ * mantiene la pantalla principal simple; en Wear OS es común usar
+ * una pantalla dedicada para acciones secundarias que no necesitan
+ * estar siempre visibles.
+ *
+ * @param volume volumen actual (0-100) a mostrar
+ * @param nivelBateria porcentaje de batería del reloj a mostrar
+ * @param onVolumeUp se invoca al presionar "+"; en WearApp escribe
+ *   `(volume + 10).coerceAtMost(100)` en Firebase
+ * @param onVolumeDown se invoca al presionar "−"; en WearApp escribe
+ *   `(volume - 10).coerceAtLeast(0)` en Firebase
+ */
 @Composable
 fun VolumeScreen(
     volume: Int,

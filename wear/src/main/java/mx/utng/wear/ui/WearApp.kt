@@ -19,6 +19,19 @@ import mx.utng.wear.ui.screens.NotificationScreen
 import mx.utng.wear.ui.screens.PlayerScreen
 import mx.utng.wear.ui.screens.VolumeScreen
 
+/**
+ * Estado global de la app de Wear OS, reflejo de lo que hay en Firebase
+ * más un dato local (nivelBateria) que no viene del teléfono sino del
+ * propio reloj.
+ *
+ * @param isPlaying true si hay reproducción activa
+ * @param title título de la canción actual
+ * @param artist artista de la canción actual
+ * @param volume volumen actual (0-100)
+ * @param source fuente activa ("jamendo", "radio", "spotify", etc.)
+ * @param nivelBateria porcentaje de batería del propio smartwatch (0-100),
+ *   leído directo del sistema Android, no de Firebase
+ */
 data class WearState(
     val isPlaying: Boolean = false,
     val title: String = "",
@@ -28,6 +41,33 @@ data class WearState(
     val nivelBateria: Int = 100
 )
 
+/**
+ * Composable raíz de la app de Wear OS. Reúne tres responsabilidades:
+ *
+ * 1) Sincronización con Firebase: un listener sobre el nodo "playback"
+ *    actualiza `state` cada vez que cambia isPlaying, title, artist,
+ *    volume o source. Usa `state.copy(...)` en vez de crear un
+ *    WearState nuevo para no perder el nivelBateria (que no viene
+ *    de Firebase) en cada actualización.
+ *
+ * 2) Lectura de batería local: un BroadcastReceiver escucha
+ *    ACTION_BATTERY_CHANGED del propio reloj y actualiza
+ *    `nivelBateria` calculando el porcentaje a partir de EXTRA_LEVEL
+ *    y EXTRA_SCALE. Esto es independiente de Firebase porque es un
+ *    dato físico del dispositivo, no del estado de reproducción.
+ *
+ * 3) Navegación: usa un SwipeDismissableNavHost (patrón típico de
+ *    Wear OS) con tres destinos — "player", "volume" y "notification" —
+ *    y detecta cambios de título de canción para disparar
+ *    automáticamente la navegación a "notification" cuando llega una
+ *    canción nueva (showNotification).
+ *
+ * Los callbacks que se pasan a cada pantalla (onTogglePlay, onNext,
+ * onPrevious, onVolumeUp/Down, onOk, onSkip) no reproducen nada
+ * localmente: solo escriben comandos en Firebase (isPlaying,
+ * skipSong, volume), y es el teléfono quien ejecuta la acción real
+ * y refleja el nuevo estado de vuelta.
+ */
 @Composable
 fun WearApp() {
     val context = LocalContext.current
