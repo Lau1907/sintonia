@@ -198,8 +198,6 @@ object FirebaseTvSync {
 }
 ```
 
-> **Nota de limpieza sugerida:** dentro de `observePlayerState()` quedaron tres líneas de `android.util.Log.d(...)` marcadas con el comentario `// ← Agrega aquí los logs`. Son útiles para depurar, pero conviene quitarlas (o dejarlas detrás de un flag de debug) antes de la entrega final.
-
 ---
 
 ## `MainActivity.kt` — #archivo de la actividad principal (punto de entrada de la app)
