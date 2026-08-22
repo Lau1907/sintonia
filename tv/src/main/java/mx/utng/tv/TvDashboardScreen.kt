@@ -45,6 +45,21 @@ val youtubeQueue = listOf(
     Triple("Heartless", "The Weeknd", "3:29"),
 )
 
+/**
+ * Pantalla principal del dashboard de Android TV.
+ *
+ * Se suscribe a FirebaseTvSync.observePlayerState() para mantener el
+ * estado (`state`) siempre actualizado, y además corre un temporizador
+ * local (LaunchedEffect con delay(500)) que avanza `localProgress`
+ * poco a poco entre actualizaciones de Firebase — esto evita que la
+ * barra de progreso se vea "congelada" o con saltos bruscos mientras
+ * se espera el siguiente evento del servidor.
+ *
+ * Según el estado, decide qué layout mostrar:
+ * - Sin canción actual → mensaje de "esperando reproducción"
+ * - source == "youtube" → TvYouTubeLayout
+ * - cualquier otra fuente → TvMusicLayout
+ */
 @Composable
 fun TvDashboardScreen() {
     var state by remember { mutableStateOf(TvPlayerState()) }
@@ -171,6 +186,19 @@ fun TvDashboardScreen() {
     }
 }
 
+/**
+ * Layout principal para fuentes de audio "normales" (Jamendo, Spotify,
+ * Radio): portada/visualizador a la izquierda, controles de
+ * reproducción al centro y cola de reproducción a la derecha.
+ *
+ * Por qué existe: separa la lógica visual de música del resto de
+ * TvDashboardScreen para que esta última solo decida "qué layout
+ * mostrar" y no cómo se ve cada uno.
+ *
+ * @param state estado actual del reproductor (título, artista, cola, etc.)
+ * @param progress progreso de reproducción (0f–1f) ya suavizado por el
+ *   temporizador local de TvDashboardScreen
+ */
 @Composable
 fun TvMusicLayout(state: TvPlayerState, progress: Float) {
     val accentColor = when (state.source) {
@@ -423,6 +451,18 @@ fun TvMusicLayout(state: TvPlayerState, progress: Float) {
     }
 }
 
+/**
+ * Convierte una duración en milisegundos a formato "m:ss" para
+ * mostrarla en pantalla (por ejemplo, 125000L → "2:05").
+ *
+ * Por qué existe: es una utilidad de formato reutilizada en la barra
+ * de progreso de TvMusicLayout; evita repetir el cálculo de
+ * minutos/segundos en cada lugar donde se muestra un tiempo.
+ *
+ * @param ms duración en milisegundos
+ * @return cadena con formato "minutos:segundos" (segundos con 2 dígitos),
+ *   o "0:00" si ms es menor o igual a 0
+ */
 fun formatTvTime(ms: Long): String {
     if (ms <= 0) return "0:00"
     val totalSeconds = ms / 1000
@@ -431,6 +471,23 @@ fun formatTvTime(ms: Long): String {
     return "%d:%02d".format(min, sec)
 }
 
+/**
+ * Layout para la fuente "youtube": reproduce el video embebido en un
+ * WebView (usando el reproductor oficial de YouTube vía iframe) y
+ * muestra la cola de "a continuación" junto con datos del canal.
+ *
+ * Extrae el videoId a partir de audioUrl (quitando el prefijo de la URL
+ * completa o el prefijo "youtube:") y arma la URL de embed con
+ * autoplay habilitado. El WebView se configura con JavaScript activado
+ * y sin requerir gesto del usuario para reproducir automáticamente.
+ *
+ * Por qué existe: YouTube no permite reproducir su contenido con
+ * ExoPlayer directamente (términos de servicio), así que se usa un
+ * WebView con el iframe oficial como alternativa legal.
+ *
+ * @param state estado actual del reproductor; se usa su audioUrl,
+ *   currentTitle, currentArtist e isPlaying
+ */
 @Composable
 fun TvYouTubeLayout(state: TvPlayerState) {
     Row(
@@ -553,6 +610,17 @@ fun TvYouTubeLayout(state: TvPlayerState) {
     }
 }
 
+/**
+ * Pequeño indicador visual (punto de color + etiqueta) usado en el
+ * encabezado del dashboard para mostrar, por ejemplo, la fuente activa
+ * o el estado de conexión con el teléfono.
+ *
+ * Por qué existe: evita repetir la misma combinación de Box circular +
+ * Text cada vez que se necesita un "status dot" en la UI.
+ *
+ * @param label texto que acompaña al punto de color
+ * @param color color del punto indicador
+ */
 @Composable
 fun TvStatusDot(label: String, color: Color) {
     Row(
@@ -569,6 +637,18 @@ fun TvStatusDot(label: String, color: Color) {
     }
 }
 
+/**
+ * Visualizador animado de barras (estilo ecualizador) que se muestra
+ * en vez de una portada cuando la fuente activa es "radio" (la radio
+ * no tiene portada de álbum).
+ *
+ * Las barras animan su altura de forma infinita y escalonada
+ * (duración distinta por barra) mientras isPlaying es true; si está
+ * en pausa, se muestra el texto "En pausa" en su lugar.
+ *
+ * @param isPlaying controla si la animación de barras corre o se
+ *   reemplaza por el texto de pausa
+ */
 @Composable
 fun TvRadioVisualizer(isPlaying: Boolean) {
     Box(
@@ -621,6 +701,16 @@ fun TvRadioVisualizer(isPlaying: Boolean) {
     }
 }
 
+/**
+ * Barra de progreso indeterminada (loop continuo) usada específicamente
+ * para la fuente "radio", donde no existe un progreso real (es un
+ * stream en vivo, no una pista con duración fija).
+ *
+ * Por qué existe: TvMusicLayout usa una LinearProgressIndicator con
+ * progreso real para canciones, pero la radio necesita una barra que
+ * solo comunique "esto sigue sonando en vivo", de ahí la animación en
+ * bucle en vez de un valor calculado.
+ */
 @Composable
 fun TvRadioProgressBar() {
     val infiniteTransition = rememberInfiniteTransition(label = "radioProgress")
